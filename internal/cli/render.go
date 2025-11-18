@@ -1,13 +1,67 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/spf13/cobra"
+
+	"github.com/codex-k8s/codexctl/internal/config"
+	"github.com/codex-k8s/codexctl/internal/env"
+)
 
 // newRenderCommand creates the "render" subcommand that renders manifests from services.yaml.
 func newRenderCommand(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "render",
 		Short: "Render Kubernetes manifests from services.yaml",
-		RunE:  notImplemented,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+
+			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
+			if err != nil {
+				return err
+			}
+
+			varFile := cmd.Flag("var-file").Value.String()
+			varFiles := []string{}
+			if varFile != "" {
+				varFiles = append(varFiles, varFile)
+			}
+
+			loadOpts := config.LoadOptions{
+				Env:       opts.Env,
+				Namespace: opts.Namespace,
+				UserVars:  inlineVars,
+				VarFiles:  varFiles,
+			}
+
+			rendered, _, err := config.LoadAndRender(opts.ConfigPath, loadOpts)
+			if err != nil {
+				return err
+			}
+
+			outputDir := cmd.Flag("output").Value.String()
+			toStdout, _ := cmd.Flags().GetBool("stdout")
+
+			if outputDir == "" || toStdout {
+				_, writeErr := os.Stdout.Write(rendered)
+				return writeErr
+			}
+
+			if err := os.MkdirAll(outputDir, 0o755); err != nil {
+				return fmt.Errorf("create output directory %q: %w", outputDir, err)
+			}
+
+			outPath := filepath.Join(outputDir, "services.rendered.yaml")
+			if err := os.WriteFile(outPath, rendered, 0o644); err != nil {
+				return fmt.Errorf("write rendered config to %q: %w", outPath, err)
+			}
+
+			logger.Info("rendered services.yaml", "path", outPath)
+			return nil
+		},
 	}
 
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to render (dev, staging, ai)")
