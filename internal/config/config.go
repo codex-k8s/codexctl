@@ -199,6 +199,14 @@ func LoadStackConfig(path string, opts LoadOptions) (*StackConfig, TemplateConte
 		return nil, TemplateContext{}, fmt.Errorf("parse rendered services.yaml: %w", err)
 	}
 
+	ns, err := ResolveNamespace(&cfg, ctx, opts.Env)
+	if err != nil {
+		return nil, TemplateContext{}, err
+	}
+	if ns != "" {
+		ctx.Namespace = ns
+	}
+
 	return &cfg, ctx, nil
 }
 
@@ -289,4 +297,79 @@ func funcTernary(cond bool, a, b any) any {
 		return a
 	}
 	return b
+}
+
+// ResolveEnvironment returns the effective environment configuration for the given name,
+// following optional "from" links and applying overrides.
+func ResolveEnvironment(cfg *StackConfig, name string) (Environment, error) {
+	if cfg == nil {
+		return Environment{}, fmt.Errorf("stack config is nil")
+	}
+
+	visited := make(map[string]struct{})
+	var resolve func(current string) (Environment, error)
+
+	resolve = func(current string) (Environment, error) {
+		if _, seen := visited[current]; seen {
+			return Environment{}, fmt.Errorf("environment inheritance cycle detected at %q", current)
+		}
+		visited[current] = struct{}{}
+
+		envCfg, ok := cfg.Environments[current]
+		if !ok {
+			return Environment{}, fmt.Errorf("environment %q not defined in services.yaml", current)
+		}
+
+		if envCfg.From == "" {
+			return envCfg, nil
+		}
+
+		base, err := resolve(envCfg.From)
+		if err != nil {
+			return Environment{}, err
+		}
+
+		merged := base
+		if envCfg.Kubeconfig != "" {
+			merged.Kubeconfig = envCfg.Kubeconfig
+		}
+		if envCfg.Context != "" {
+			merged.Context = envCfg.Context
+		}
+		if envCfg.ImagePullPolicy != "" {
+			merged.ImagePullPolicy = envCfg.ImagePullPolicy
+		}
+		if envCfg.LocalRegistry != nil {
+			merged.LocalRegistry = envCfg.LocalRegistry
+		}
+		return merged, nil
+	}
+
+	return resolve(name)
+}
+
+// ResolveNamespace derives the namespace for the given environment using namespace patterns
+// and the current template context when explicit ctx.Namespace is empty.
+func ResolveNamespace(cfg *StackConfig, ctx TemplateContext, envName string) (string, error) {
+	if ctx.Namespace != "" {
+		return ctx.Namespace, nil
+	}
+	if cfg == nil || cfg.Namespace == nil {
+		return "", nil
+	}
+	if cfg.Namespace.Patterns == nil {
+		return "", nil
+	}
+
+	pattern, ok := cfg.Namespace.Patterns[envName]
+	if !ok || strings.TrimSpace(pattern) == "" {
+		return "", nil
+	}
+
+	rendered, err := RenderTemplate("namespace", []byte(pattern), ctx)
+	if err != nil {
+		return "", fmt.Errorf("render namespace pattern for env %q: %w", envName, err)
+	}
+	ns := strings.TrimSpace(string(rendered))
+	return ns, nil
 }
