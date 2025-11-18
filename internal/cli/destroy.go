@@ -9,6 +9,7 @@ import (
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/engine"
 	"github.com/codex-k8s/codexctl/internal/env"
+	"github.com/codex-k8s/codexctl/internal/hooks"
 	"github.com/codex-k8s/codexctl/internal/kube"
 )
 
@@ -56,11 +57,49 @@ func newDestroyCommand(opts *Options) *cobra.Command {
 
 			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 
+			hookExec := hooks.NewExecutor(logger)
+			hookCtx := hooks.StepContext{
+				Stack:      stackCfg,
+				Template:   ctxData,
+				EnvName:    opts.Env,
+				KubeClient: kubeClient,
+			}
+
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
 			defer cancel()
 
+			// Stack-level and infrastructure/service hooks before destroy.
+			if err := hookExec.RunSteps(ctx, stackCfg.Hooks.BeforeAll, hookCtx); err != nil {
+				return err
+			}
+			for _, infra := range stackCfg.Infrastructure {
+				if err := hookExec.RunSteps(ctx, infra.Hooks.BeforeDestroy, hookCtx); err != nil {
+					return err
+				}
+			}
+			for _, svc := range stackCfg.Services {
+				if err := hookExec.RunSteps(ctx, svc.Hooks.BeforeDestroy, hookCtx); err != nil {
+					return err
+				}
+			}
+
 			logger.Info("deleting manifests", "env", opts.Env, "namespace", ctxData.Namespace)
 			if err := kubeClient.Delete(ctx, manifests, true); err != nil {
+				return err
+			}
+
+			// Infrastructure/service hooks and stack-level hooks after destroy.
+			for _, infra := range stackCfg.Infrastructure {
+				if err := hookExec.RunSteps(ctx, infra.Hooks.AfterDestroy, hookCtx); err != nil {
+					return err
+				}
+			}
+			for _, svc := range stackCfg.Services {
+				if err := hookExec.RunSteps(ctx, svc.Hooks.AfterDestroy, hookCtx); err != nil {
+					return err
+				}
+			}
+			if err := hookExec.RunSteps(ctx, stackCfg.Hooks.AfterAll, hookCtx); err != nil {
 				return err
 			}
 

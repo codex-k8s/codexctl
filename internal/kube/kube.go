@@ -63,6 +63,12 @@ func (c *Client) Status(ctx context.Context, namespace string, watch bool) error
 	return c.runKubectl(ctx, nil, args...)
 }
 
+// RunRaw executes kubectl with the provided arguments and optional stdin payload.
+// It is primarily intended for hook implementations.
+func (c *Client) RunRaw(ctx context.Context, stdin []byte, args ...string) error {
+	return c.runKubectl(ctx, stdin, args...)
+}
+
 func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) error {
 	cmdArgs := make([]string, 0, len(args)+4)
 	if c.Context != "" {

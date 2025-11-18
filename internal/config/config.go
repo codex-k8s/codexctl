@@ -27,6 +27,7 @@ type StackConfig struct {
 	Environments   map[string]Environment `yaml:"environments,omitempty"`
 	Infrastructure []InfraItem            `yaml:"infrastructure,omitempty"`
 	Services       []Service              `yaml:"services,omitempty"`
+	Hooks          HookSet                `yaml:"hooks,omitempty"`
 }
 
 // NamespaceBlock describes namespace patterns per environment.
@@ -54,6 +55,7 @@ type LocalRegistrySpec struct {
 type InfraItem struct {
 	Name      string        `yaml:"name"`
 	Manifests []ManifestRef `yaml:"manifests"`
+	Hooks     ResourceHooks `yaml:"hooks,omitempty"`
 }
 
 // ManifestRef points to a YAML manifest file relative to the project root.
@@ -68,6 +70,7 @@ type Service struct {
 	Image     ServiceImage       `yaml:"image,omitempty"`
 	Ingress   *ServiceIngress    `yaml:"ingress,omitempty"`
 	Overlays  map[string]Overlay `yaml:"overlays,omitempty"`
+	Hooks     ResourceHooks      `yaml:"hooks,omitempty"`
 }
 
 // ServiceImage describes how to construct the container image for a service.
@@ -93,6 +96,32 @@ type HostMount struct {
 	Name      string `yaml:"name"`
 	HostPath  string `yaml:"hostPath"`
 	MountPath string `yaml:"mountPath"`
+}
+
+// HookSet describes global hooks executed around stack operations.
+type HookSet struct {
+	BeforeAll []HookStep `yaml:"beforeAll,omitempty"`
+	AfterAll  []HookStep `yaml:"afterAll,omitempty"`
+}
+
+// ResourceHooks describes hooks bound to a particular infrastructure item or service.
+type ResourceHooks struct {
+	BeforeApply   []HookStep `yaml:"beforeApply,omitempty"`
+	AfterApply    []HookStep `yaml:"afterApply,omitempty"`
+	BeforeDestroy []HookStep `yaml:"beforeDestroy,omitempty"`
+	AfterDestroy  []HookStep `yaml:"afterDestroy,omitempty"`
+}
+
+// HookStep describes a single hook execution step.
+// It can either run a shell command or invoke a built-in action via Use.
+type HookStep struct {
+	Name            string         `yaml:"name,omitempty"`
+	Run             string         `yaml:"run,omitempty"`
+	Use             string         `yaml:"use,omitempty"`
+	With            map[string]any `yaml:"with,omitempty"`
+	When            string         `yaml:"when,omitempty"`
+	ContinueOnError bool           `yaml:"continueOnError,omitempty"`
+	Timeout         string         `yaml:"timeout,omitempty"`
 }
 
 // LoadOptions describes parameters that influence template rendering of services.yaml.
