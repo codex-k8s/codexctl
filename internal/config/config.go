@@ -15,9 +15,85 @@ import (
 	"github.com/codex-k8s/codexctl/internal/env"
 )
 
-// StackConfig is a placeholder for the future stack configuration model.
-// It will represent project, environments, infrastructure groups and services.
-type StackConfig struct{}
+// StackConfig represents the high-level description of a deployable stack.
+// It mirrors the structure of services.yaml after template rendering.
+type StackConfig struct {
+	Project        string                 `yaml:"project"`
+	EnvFiles       []string               `yaml:"envFiles,omitempty"`
+	Namespace      *NamespaceBlock        `yaml:"namespace,omitempty"`
+	MaxSlots       int                    `yaml:"maxSlots,omitempty"`
+	Registry       string                 `yaml:"registry,omitempty"`
+	BaseDomain     map[string]string      `yaml:"baseDomain,omitempty"`
+	Environments   map[string]Environment `yaml:"environments,omitempty"`
+	Infrastructure []InfraItem            `yaml:"infrastructure,omitempty"`
+	Services       []Service              `yaml:"services,omitempty"`
+}
+
+// NamespaceBlock describes namespace patterns per environment.
+type NamespaceBlock struct {
+	Patterns map[string]string `yaml:"patterns,omitempty"`
+}
+
+// Environment describes environment-level Kubernetes connection and behavior.
+type Environment struct {
+	Kubeconfig      string             `yaml:"kubeconfig,omitempty"`
+	Context         string             `yaml:"context,omitempty"`
+	From            string             `yaml:"from,omitempty"`
+	ImagePullPolicy string             `yaml:"imagePullPolicy,omitempty"`
+	LocalRegistry   *LocalRegistrySpec `yaml:"localRegistry,omitempty"`
+}
+
+// LocalRegistrySpec describes a local image registry used in development setups.
+type LocalRegistrySpec struct {
+	Enabled bool   `yaml:"enabled"`
+	Name    string `yaml:"name,omitempty"`
+	Port    int    `yaml:"port,omitempty"`
+}
+
+// InfraItem groups infrastructure manifests applied before services.
+type InfraItem struct {
+	Name      string        `yaml:"name"`
+	Manifests []ManifestRef `yaml:"manifests"`
+}
+
+// ManifestRef points to a YAML manifest file relative to the project root.
+type ManifestRef struct {
+	Path string `yaml:"path"`
+}
+
+// Service describes a single logical service in the stack.
+type Service struct {
+	Name      string             `yaml:"name"`
+	Manifests []ManifestRef      `yaml:"manifests"`
+	Image     ServiceImage       `yaml:"image,omitempty"`
+	Ingress   *ServiceIngress    `yaml:"ingress,omitempty"`
+	Overlays  map[string]Overlay `yaml:"overlays,omitempty"`
+}
+
+// ServiceImage describes how to construct the container image for a service.
+// Tag is treated as a template string (tagTemplate) that can contain Go-template expressions.
+type ServiceImage struct {
+	Repository string `yaml:"repository"`
+	Tag        string `yaml:"tagTemplate"`
+}
+
+// ServiceIngress describes host mapping per environment for a service.
+type ServiceIngress struct {
+	Hosts map[string]string `yaml:"hosts,omitempty"`
+}
+
+// Overlay describes per-environment overrides for a service.
+type Overlay struct {
+	HostMounts []HostMount `yaml:"hostMounts,omitempty"`
+	DropKinds  []string    `yaml:"dropKinds,omitempty"`
+}
+
+// HostMount describes a hostPath mount injected into workloads.
+type HostMount struct {
+	Name      string `yaml:"name"`
+	HostPath  string `yaml:"hostPath"`
+	MountPath string `yaml:"mountPath"`
+}
 
 // LoadOptions describes parameters that influence template rendering of services.yaml.
 type LoadOptions struct {
@@ -30,13 +106,14 @@ type LoadOptions struct {
 
 // TemplateContext represents the data exposed to Go-templates when rendering services.yaml.
 type TemplateContext struct {
-	Env       string
-	Namespace string
-	Project   string
-	Slot      int
-	Now       time.Time
-	UserVars  env.Vars
-	EnvMap    env.Vars
+	Env         string
+	Namespace   string
+	Project     string
+	ProjectRoot string
+	Slot        int
+	Now         time.Time
+	UserVars    env.Vars
+	EnvMap      env.Vars
 }
 
 // rawHeader is a minimal struct used to extract top-level fields before templating.
@@ -92,13 +169,14 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 	envMap := env.Merge(osVars, envFileVars, varFileVars, opts.UserVars)
 
 	ctx := TemplateContext{
-		Env:       opts.Env,
-		Namespace: opts.Namespace,
-		Project:   header.Project,
-		Slot:      opts.Slot,
-		Now:       time.Now().UTC(),
-		UserVars:  opts.UserVars,
-		EnvMap:    envMap,
+		Env:         opts.Env,
+		Namespace:   opts.Namespace,
+		Project:     header.Project,
+		ProjectRoot: baseDir,
+		Slot:        opts.Slot,
+		Now:         time.Now().UTC(),
+		UserVars:    opts.UserVars,
+		EnvMap:      envMap,
 	}
 
 	rendered, err := executeTemplate(rawBytes, ctx)
@@ -109,16 +187,24 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 	return rendered, ctx, nil
 }
 
-func executeTemplate(raw []byte, ctx TemplateContext) ([]byte, error) {
-	funcs := template.FuncMap{
-		"default":  funcDef,
-		"toLower":  strings.ToLower,
-		"slug":     funcSlug,
-		"truncSHA": funcTruncSHA,
-		"envOr":    funcEnvOr(ctx.EnvMap),
-		"ternary":  funcTernary,
-		"now":      func() time.Time { return ctx.Now },
+// LoadStackConfig loads, templates and parses services.yaml into StackConfig and TemplateContext.
+func LoadStackConfig(path string, opts LoadOptions) (*StackConfig, TemplateContext, error) {
+	rendered, ctx, err := LoadAndRender(path, opts)
+	if err != nil {
+		return nil, TemplateContext{}, err
 	}
+
+	var cfg StackConfig
+	if err := yaml.Unmarshal(rendered, &cfg); err != nil {
+		return nil, TemplateContext{}, fmt.Errorf("parse rendered services.yaml: %w", err)
+	}
+
+	return &cfg, ctx, nil
+}
+
+// executeTemplate renders the given YAML content using the stack template context.
+func executeTemplate(raw []byte, ctx TemplateContext) ([]byte, error) {
+	funcs := buildFuncMap(ctx)
 
 	tmpl, err := template.New("services.yaml").Funcs(funcs).Parse(string(raw))
 	if err != nil {
@@ -133,6 +219,36 @@ func executeTemplate(raw []byte, ctx TemplateContext) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// RenderTemplate renders arbitrary YAML or text content using the same template context and helpers.
+func RenderTemplate(name string, raw []byte, ctx TemplateContext) ([]byte, error) {
+	funcs := buildFuncMap(ctx)
+
+	tmpl, err := template.New(name).Funcs(funcs).Parse(string(raw))
+	if err != nil {
+		return nil, fmt.Errorf("parse template %q: %w", name, err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, ctx); err != nil {
+		return nil, fmt.Errorf("execute template %q: %w", name, err)
+	}
+	return buf.Bytes(), nil
+}
+
+// buildFuncMap constructs the common set of template functions available in services.yaml and manifests.
+func buildFuncMap(ctx TemplateContext) template.FuncMap {
+	return template.FuncMap{
+		"default":  funcDef,
+		"toLower":  strings.ToLower,
+		"slug":     funcSlug,
+		"truncSHA": funcTruncSHA,
+		"envOr":    funcEnvOr(ctx.EnvMap),
+		"ternary":  funcTernary,
+		"now":      func() time.Time { return ctx.Now },
+	}
+}
+
+// funcDef returns def when value is empty or whitespace, otherwise value.
 func funcDef(value, def string) string {
 	if strings.TrimSpace(value) == "" {
 		return def
@@ -140,6 +256,7 @@ func funcDef(value, def string) string {
 	return value
 }
 
+// funcSlug normalizes a value into a lower-case dash-separated slug.
 func funcSlug(value string) string {
 	v := strings.ToLower(strings.TrimSpace(value))
 	v = strings.ReplaceAll(v, " ", "-")
@@ -147,6 +264,7 @@ func funcSlug(value string) string {
 	return v
 }
 
+// funcTruncSHA truncates a SHA-like string to a shorter length for display.
 func funcTruncSHA(s string) string {
 	const max = 12
 	if len(s) <= max {
@@ -155,6 +273,7 @@ func funcTruncSHA(s string) string {
 	return s[:max]
 }
 
+// funcEnvOr returns a function that looks up a key in envMap and falls back to def.
 func funcEnvOr(envMap env.Vars) func(key, def string) string {
 	return func(key, def string) string {
 		if v, ok := envMap[key]; ok && v != "" {
@@ -164,6 +283,7 @@ func funcEnvOr(envMap env.Vars) func(key, def string) string {
 	}
 }
 
+// funcTernary returns a when cond is true, otherwise b.
 func funcTernary(cond bool, a, b any) any {
 	if cond {
 		return a

@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codex-k8s/codexctl/internal/config"
+	"github.com/codex-k8s/codexctl/internal/engine"
 	"github.com/codex-k8s/codexctl/internal/env"
 )
 
@@ -37,7 +38,13 @@ func newRenderCommand(opts *Options) *cobra.Command {
 				VarFiles:  varFiles,
 			}
 
-			rendered, _, err := config.LoadAndRender(opts.ConfigPath, loadOpts)
+			stackCfg, ctx, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			if err != nil {
+				return err
+			}
+
+			eng := engine.NewEngine()
+			rendered, err := eng.RenderStack(stackCfg, ctx)
 			if err != nil {
 				return err
 			}
@@ -54,12 +61,12 @@ func newRenderCommand(opts *Options) *cobra.Command {
 				return fmt.Errorf("create output directory %q: %w", outputDir, err)
 			}
 
-			outPath := filepath.Join(outputDir, "services.rendered.yaml")
+			outPath := filepath.Join(outputDir, "rendered.yaml")
 			if err := os.WriteFile(outPath, rendered, 0o644); err != nil {
 				return fmt.Errorf("write rendered config to %q: %w", outPath, err)
 			}
 
-			logger.Info("rendered services.yaml", "path", outPath)
+			logger.Info("rendered manifests", "path", outPath)
 			return nil
 		},
 	}
@@ -70,6 +77,7 @@ func newRenderCommand(opts *Options) *cobra.Command {
 	cmd.Flags().Bool("stdout", false, "Force output to stdout instead of files")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+	_ = cmd.MarkFlagRequired("env")
 
 	return cmd
 }
