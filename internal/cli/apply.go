@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -70,6 +68,17 @@ func newApplyCommand(opts *Options) *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
 			defer cancel()
 
+			preflight, _ := cmd.Flags().GetBool("preflight")
+			if preflight {
+				logger.Info("running preflight checks before apply", "env", opts.Env)
+				if err := hookExec.RunPreflightBasic(ctx); err != nil {
+					return err
+				}
+				if err := runDoctorChecks(ctx, logger, stackCfg, ctxData, envCfg, opts.Env); err != nil {
+					return err
+				}
+			}
+
 			// Stack-level and infrastructure/service hooks before apply.
 			if err := hookExec.RunSteps(ctx, stackCfg.Hooks.BeforeAll, hookCtx); err != nil {
 				return err
@@ -115,11 +124,6 @@ func newApplyCommand(opts *Options) *cobra.Command {
 						return err
 					}
 				}
-			}
-
-			preflight, _ := cmd.Flags().GetBool("preflight")
-			if preflight {
-				fmt.Fprintln(os.Stderr, "warn: --preflight flag is acknowledged but detailed checks are not implemented yet")
 			}
 
 			return nil

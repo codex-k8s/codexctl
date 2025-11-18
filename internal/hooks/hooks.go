@@ -259,6 +259,11 @@ func (e *Executor) runPreflight(ctx context.Context) error {
 	return nil
 }
 
+// RunPreflightBasic exposes the minimal kubectl presence check for reuse in doctor.
+func (e *Executor) RunPreflightBasic(ctx context.Context) error {
+	return e.runPreflight(ctx)
+}
+
 func toInt(v any) (int, error) {
 	switch t := v.(type) {
 	case int:
