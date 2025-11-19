@@ -1,0 +1,106 @@
+project: my-ai-project
+
+envFiles:
+  - VERSIONS
+
+namespace:
+  patterns:
+    dev: "{{ .Project }}-dev"
+    staging: "{{ .Project }}-staging"
+    ai: "{{ .Project }}-dev-{{ .Slot }}"
+
+maxSlots: 0
+
+registry: "{{ envOr \"REGISTRY_HOST\" \"localhost:32000\" }}"
+
+state:
+  backend: configmap
+  configmapNamespace: codex-system
+  configmapPrefix: codex-env-
+
+environments:
+  dev:
+    kubeconfig: "~/.kube/my-ai-project-work"
+    context: "my-ai-project-work"
+    imagePullPolicy: IfNotPresent
+    localRegistry:
+      enabled: true
+      name: "my-ai-registry"
+      port: 32000
+  staging:
+    kubeconfig: "~/.kube/my-ai-project-staging.yaml"
+    context: "my-ai-project-staging"
+    imagePullPolicy: Always
+  ai:
+    from: "staging"
+    imagePullPolicy: IfNotPresent
+
+infrastructure:
+  - name: storage
+    manifests:
+      - path: deploy/storageclass.yaml
+    hooks:
+      beforeApply:
+        - name: ensure-storageclass
+          use: run
+          run: "kubectl get storageclass my-ai-local >/dev/null 2>&1 || kubectl apply -f deploy/storageclass.yaml"
+
+  - name: core-config
+    manifests:
+      - path: deploy/configmap.yaml
+      - path: deploy/secret.yaml
+
+  - name: observability
+    manifests:
+      - path: deploy/jaeger.yaml
+      - path: deploy/oauth2-proxy.yaml
+
+  - name: data-services
+    manifests:
+      - path: deploy/postgres.service.yaml
+      - path: deploy/redis.service.yaml
+      - path: deploy/rabbitmq.service.yaml
+
+services:
+  - name: django-backend
+    manifests:
+      - path: services/django_backend/deploy.yaml
+    image:
+      repository: "{{ .registry }}/my-ai-project/django-backend"
+      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"DJANGO_BACKEND_VERSION\") }}"
+    overlays:
+      ai:
+        hostMounts:
+          - name: code-src
+            hostPath: "{{ .ProjectRoot }}/slots/{{ .Slot }}/services/django_backend"
+            mountPath: "/app"
+
+  - name: user-gateway
+    manifests:
+      - path: services/user_gateway/deploy.yaml
+    image:
+      repository: "{{ .registry }}/my-ai-project/user-gateway"
+      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"USER_GATEWAY_VERSION\") }}"
+    overlays:
+      ai:
+        hostMounts:
+          - name: code-src
+            hostPath: "{{ .ProjectRoot }}/slots/{{ .Slot }}/services/user_gateway"
+            mountPath: "/app"
+
+hooks:
+  beforeAll:
+    - name: ensure-local-registry
+      run: |
+        if command -v docker >/dev/null 2>&1; then
+          if ! docker ps --format '{{"{{"}}.Names{{"}}"}}' | grep -q '^my-ai-registry$'; then
+            if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q '^my-ai-registry$'; then
+              docker start my-ai-registry >/dev/null 2>&1 || true
+            else
+              docker run -d -p 32000:5000 --restart=always --name my-ai-registry registry:2 >/dev/null 2>&1 || true
+            fi
+          fi
+        fi
+  afterAll:
+    - name: announce-env-ready
+      run: "echo 'Environment {{ .Env }} in namespace {{ .Namespace }} is ready (slot={{ .Slot }}).'"
