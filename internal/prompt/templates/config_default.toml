@@ -1,0 +1,20 @@
+model = "gpt-5"
+model_reasoning_effort = "medium"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+model_verbosity = "low"
+web_search_request = false
+
+{{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
+
+# MCP servers
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+startup_timeout_sec = 60
+
+[mcp_servers.context7.env]
+CONTEXT7_API_KEY = "$CONTEXT7_API_KEY"
+CONTEXT7_MCP_URL = "https://mcp.context7.com/mcp"
+{{- end }}
+

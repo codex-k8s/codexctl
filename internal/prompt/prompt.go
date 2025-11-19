@@ -16,12 +16,13 @@ const (
 	PromptKindDevIssue  = "dev_issue"
 	PromptKindReviewFix = "review_fix"
 
-	defaultPromptLang  = "en"
-	builtinTemplateDir = "templates"
-	builtinTemplateExt = ".tmpl"
+	defaultPromptLang          = "en"
+	builtinTemplateDir         = "templates"
+	builtinTemplateExt         = ".tmpl"
+	defaultCodexConfigTemplate = "templates/config_default.toml"
 )
 
-//go:embed templates/*.tmpl
+//go:embed templates/*.tmpl templates/config_default.toml
 var builtinTemplates embed.FS
 
 // Renderer renders prompt and configuration templates using stack template context.
@@ -143,11 +144,20 @@ func (r *Renderer) CodexConfigTemplatePath() string {
 }
 
 // RenderCodexConfig renders the Codex config template defined in services.yaml
-// under codex.configTemplate. It returns an error when no template is configured.
+// under codex.configTemplate. When no project-specific template is configured,
+// a builtin default template is used.
 func (r *Renderer) RenderCodexConfig() ([]byte, error) {
 	path := r.CodexConfigTemplatePath()
 	if path == "" {
-		return nil, fmt.Errorf("codex.configTemplate is not configured in services.yaml")
+		raw, err := builtinTemplates.ReadFile(defaultCodexConfigTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("load builtin Codex config template: %w", err)
+		}
+		rendered, err := config.RenderTemplate("codex-config.toml", raw, r.ctx)
+		if err != nil {
+			return nil, fmt.Errorf("render builtin Codex config template: %w", err)
+		}
+		return rendered, nil
 	}
 
 	resolved, err := r.resolveProjectPath(path)
