@@ -23,6 +23,10 @@ on:
         required: false
         type: string
         description: "Path to var-file in the consumer repo"
+      slot:
+        required: false
+        type: number
+        description: "Slot number for slot-based environments (e.g. ai)"
     secrets:
       KUBECONFIG:
         required: true
@@ -78,6 +82,7 @@ jobs:
           NS_INPUT="${{ inputs.namespace }}"
           VARS_INPUT="${{ inputs.vars }}"
           VAR_FILE_INPUT="${{ inputs.var_file }}"
+          SLOT_INPUT="${{ inputs.slot }}"
 
           ARGS=(apply --env "${ENV_NAME}" --wait --preflight)
 
@@ -89,6 +94,9 @@ jobs:
           fi
           if [ -n "$VAR_FILE_INPUT" ]; then
             ARGS+=(--var-file "$VAR_FILE_INPUT")
+          fi
+          if [ -n "$SLOT_INPUT" ] && [ "$SLOT_INPUT" != "0" ]; then
+            ARGS+=(--slot "$SLOT_INPUT")
           fi
 
           ./codexctl "${ARGS[@]}"

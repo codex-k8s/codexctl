@@ -32,9 +32,15 @@ func newDestroyCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
+			slot, err := cmd.Flags().GetInt("slot")
+			if err != nil {
+				return err
+			}
+
 			loadOpts := config.LoadOptions{
 				Env:       opts.Env,
 				Namespace: opts.Namespace,
+				Slot:      slot,
 				UserVars:  inlineVars,
 				VarFiles:  varFiles,
 			}
@@ -112,6 +118,7 @@ func newDestroyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().Bool("yes", false, "Do not prompt for confirmation")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+	cmd.Flags().Int("slot", 0, "Slot number for slot-based environments (e.g. ai)")
 	_ = cmd.MarkFlagRequired("env")
 
 	return cmd
