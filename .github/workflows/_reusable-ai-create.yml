@@ -1,0 +1,119 @@
+name: codexctl-ai-create
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        required: false
+        type: string
+        default: "ai"
+        description: "Environment type for the slot (default: ai)"
+      issue:
+        required: false
+        type: number
+        description: "GitHub issue number associated with the slot"
+      pr:
+        required: false
+        type: number
+        description: "GitHub pull request number associated with the slot"
+      max:
+        required: false
+        type: number
+        default: 0
+        description: "Maximum number of slots (0 means unlimited)"
+      prefer:
+        required: false
+        type: number
+        default: 0
+        description: "Preferred slot number to reuse if available"
+      vars:
+        required: false
+        type: string
+        description: "Additional variables in k=v,k2=v2 format"
+      var_file:
+        required: false
+        type: string
+        description: "Path to var-file in the consumer repo"
+    secrets:
+      KUBECONFIG:
+        required: true
+      CODEX_GH_PAT:
+        required: true
+      CODEX_GH_USERNAME:
+        required: false
+
+jobs:
+  create:
+    runs-on: self-hosted
+
+    outputs:
+      namespace: ${{ steps.alloc.outputs.namespace }}
+      slot: ${{ steps.alloc.outputs.slot }}
+
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - name: Checkout codexctl (same ref as this reusable workflow)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.action_repository }}
+          ref: ${{ github.action_ref }}
+          path: ./.codexctl
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - name: Build codexctl
+        run: |
+          set -euo pipefail
+          cd ./.codexctl
+          go build -o ../codexctl ./cmd/codexctl
+
+      - name: Allocate slot via codexctl manage-env
+        id: alloc
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          CODEX_GH_PAT: ${{ secrets.CODEX_GH_PAT }}
+          CODEX_GH_USERNAME: ${{ secrets.CODEX_GH_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          ENV_NAME="${{ inputs.env }}"
+          ISSUE="${{ inputs.issue }}"
+          PR="${{ inputs.pr }}"
+          MAX="${{ inputs.max }}"
+          PREFER="${{ inputs.prefer }}"
+          VARS_INPUT="${{ inputs.vars }}"
+          VAR_FILE_INPUT="${{ inputs.var_file }}"
+
+          ARGS=(manage-env create --env "${ENV_NAME}")
+
+          if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ]; then
+            ARGS+=(--issue "$ISSUE")
+          fi
+          if [ -n "$PR" ] && [ "$PR" != "0" ]; then
+            ARGS+=(--pr "$PR")
+          fi
+          if [ -n "$MAX" ]; then
+            ARGS+=(--max "$MAX")
+          fi
+          if [ -n "$PREFER" ] && [ "$PREFER" != "0" ]; then
+            ARGS+=(--prefer "$PREFER")
+          fi
+          if [ -n "$VARS_INPUT" ]; then
+            ARGS+=(--vars "$VARS_INPUT")
+          fi
+          if [ -n "$VAR_FILE_INPUT" ]; then
+            ARGS+=(--var-file "$VAR_FILE_INPUT")
+          fi
+
+          OUT="$(./codexctl "${ARGS[@]}")"
+          echo "$OUT"
+
+          SLOT="$(echo "$OUT" | awk '/^slot:/ {print $2}')"
+          NS="$(echo "$OUT" | awk '/^namespace:/ {print $2}')"
+
+          echo "slot=$SLOT" >> "$GITHUB_OUTPUT"
+          echo "namespace=$NS" >> "$GITHUB_OUTPUT"
