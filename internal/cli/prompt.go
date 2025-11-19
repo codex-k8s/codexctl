@@ -122,11 +122,30 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				return fmt.Errorf("namespace is empty for env=%q slot=%d; ensure namespace.patterns are configured", envName, slot)
 			}
 
-			ctxExec, cancel := context.WithTimeout(cmd.Context(), 60*time.Minute)
+			execTimeout := 60 * time.Minute
+			if t := ctxData.Codex.Timeouts.Exec; t != "" {
+				if d, parseErr := time.ParseDuration(t); parseErr == nil {
+					execTimeout = d
+				} else {
+					logger.Warn("invalid codex.exec timeout, using default", "value", t, "default", execTimeout.String(), "error", parseErr)
+				}
+			}
+
+			ctxExec, cancel := context.WithTimeout(cmd.Context(), execTimeout)
 			defer cancel()
 
 			logger.Info("waiting for codex deployment to be ready", "namespace", ns)
-			if err := kubeClient.RunRaw(ctxExec, nil, "-n", ns, "rollout", "status", "deploy/codex", "--timeout=300s"); err != nil {
+			rolloutTimeout := ctxData.Codex.Timeouts.Rollout
+			if rolloutTimeout == "" {
+				rolloutTimeout = "300s"
+			}
+			if err := kubeClient.RunRaw(
+				ctxExec,
+				nil,
+				"-n", ns,
+				"rollout", "status", "deploy/codex",
+				"--timeout="+rolloutTimeout,
+			); err != nil {
 				return err
 			}
 

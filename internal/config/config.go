@@ -54,6 +54,18 @@ type CodexConfig struct {
 	// It is intended to be rendered into prompts so that agents know what
 	// services and endpoints are reachable.
 	ServicesOverview string `yaml:"servicesOverview,omitempty"`
+	// Timeouts configures operation timeouts related to Codex flows, such as
+	// prompt execution and rollout waits.
+	Timeouts CodexTimeouts `yaml:"timeouts,omitempty"`
+}
+
+// CodexTimeouts holds string-form durations for Codex-related operations.
+// Empty values fall back to built-in defaults in cli/prompt commands.
+type CodexTimeouts struct {
+	// Exec is the overall timeout for a "prompt run" execution (e.g. "60m").
+	Exec string `yaml:"exec,omitempty"`
+	// Rollout is the timeout passed to "kubectl rollout status" (e.g. "300s").
+	Rollout string `yaml:"rollout,omitempty"`
 }
 
 // NamespaceBlock describes namespace patterns per environment.
