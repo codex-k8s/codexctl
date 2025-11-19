@@ -1,11 +1,282 @@
 // Package state defines the backend used to persist environment and slot state.
 package state
 
-// Store is a placeholder for the environment and slot state backend.
-// It will abstract over ConfigMap or CRD based persistence.
-type Store struct{}
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
 
-// NewStore constructs a new Store instance.
-func NewStore() *Store {
-	return &Store{}
+	"github.com/codex-k8s/codexctl/internal/config"
+	"github.com/codex-k8s/codexctl/internal/kube"
+)
+
+// Store manages environment and slot records using a chosen backend.
+type Store struct {
+	client    *kube.Client
+	logger    *slog.Logger
+	namespace string
+	prefix    string
+}
+
+// EnvRecord represents a single allocated environment slot.
+type EnvRecord struct {
+	Slot       int
+	Env        string
+	Namespace  string
+	Issue      int
+	PR         int
+	CreatedAt  time.Time
+	ConfigName string
+}
+
+// NewStore constructs a new Store instance for the given stack state configuration.
+// Currently only a ConfigMap-based backend is supported.
+func NewStore(stackCfg *config.StackConfig, client *kube.Client, logger *slog.Logger) (*Store, error) {
+	if stackCfg == nil {
+		return nil, fmt.Errorf("stack config is nil")
+	}
+
+	stateCfg := stackCfg.State
+	if stateCfg.Backend != "" && stateCfg.Backend != "configmap" {
+		return nil, fmt.Errorf("unsupported state backend %q", stateCfg.Backend)
+	}
+	if strings.TrimSpace(stateCfg.ConfigMapNamespace) == "" {
+		return nil, fmt.Errorf("state.configmapNamespace must be set for configmap backend")
+	}
+
+	prefix := stateCfg.ConfigMapPrefix
+	if strings.TrimSpace(prefix) == "" {
+		prefix = "codex-env-"
+	}
+
+	if client == nil {
+		return nil, fmt.Errorf("state store requires a Kubernetes client")
+	}
+
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(nil, nil))
+	}
+
+	return &Store{
+		client:    client,
+		logger:    logger,
+		namespace: stateCfg.ConfigMapNamespace,
+		prefix:    prefix,
+	}, nil
+}
+
+// AllocateSlot reserves a new slot and returns its metadata.
+// max == 0 means unlimited slots; prefer >0 is attempted first.
+func (s *Store) AllocateSlot(
+	ctx context.Context,
+	stackCfg *config.StackConfig,
+	baseCtx config.TemplateContext,
+	envName string,
+	max int,
+	prefer int,
+	issue int,
+	pr int,
+) (EnvRecord, error) {
+	var zero EnvRecord
+
+	if max < 0 {
+		max = 0
+	}
+
+	owner := strings.TrimSpace(baseCtx.EnvMap["GITHUB_RUN_ID"])
+	if owner == "" {
+		owner = "manual"
+	}
+
+	order := buildSlotOrder(max, prefer)
+	now := time.Now().UTC()
+
+	for _, slot := range order {
+		ctxSlot := baseCtx
+		ctxSlot.Slot = slot
+		ctxSlot.Namespace = ""
+
+		ns, err := config.ResolveNamespace(stackCfg, ctxSlot, envName)
+		if err != nil {
+			return zero, err
+		}
+
+		s.logger.Info("attempting to allocate slot", "slot", slot, "env", envName, "namespace", ns)
+
+		name := fmt.Sprintf("%s%d", s.prefix, slot)
+
+		args := []string{
+			"create", "configmap", name,
+			"-n", s.namespace,
+			"--from-literal=slot=" + strconv.Itoa(slot),
+			"--from-literal=env=" + envName,
+			"--from-literal=namespace=" + ns,
+			"--from-literal=owner=" + owner,
+			"--from-literal=issue=" + strconv.Itoa(issue),
+			"--from-literal=pr=" + strconv.Itoa(pr),
+			"--from-literal=createdAt=" + now.Format(time.RFC3339),
+		}
+
+		err = s.client.RunRaw(ctx, nil, args...)
+		if err == nil {
+			return EnvRecord{
+				Slot:       slot,
+				Env:        envName,
+				Namespace:  ns,
+				Issue:      issue,
+				PR:         pr,
+				CreatedAt:  now,
+				ConfigName: name,
+			}, nil
+		}
+
+		// Any error is treated as "slot not available"; proceed to the next candidate.
+		s.logger.Debug("slot allocation attempt failed", "slot", slot, "error", err)
+	}
+
+	if max > 0 {
+		return zero, fmt.Errorf("no free slot found in range 1..%d", max)
+	}
+	return zero, fmt.Errorf("no free slot found up to allocation limit")
+}
+
+// GarbageCollect removes stale environment records based on TTL and returns the list of removed slots.
+// When envName is non-empty, only records for that environment are considered.
+func (s *Store) GarbageCollect(ctx context.Context, envName string, ttl time.Duration) ([]EnvRecord, error) {
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+
+	now := time.Now().UTC()
+
+	list, err := s.listConfigMaps(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var removed []EnvRecord
+	for _, item := range list.Items {
+		if !strings.HasPrefix(item.Metadata.Name, s.prefix) {
+			continue
+		}
+
+		slot, err := strconv.Atoi(item.Data["slot"])
+		if err != nil || slot <= 0 {
+			continue
+		}
+		envVal := item.Data["env"]
+		if envName != "" && envVal != envName {
+			continue
+		}
+
+		ns := item.Data["namespace"]
+		createdStr := item.Data["createdAt"]
+		createdAt, err := time.Parse(time.RFC3339, createdStr)
+		if err != nil {
+			createdAt = now
+		}
+		if now.Sub(createdAt) < ttl {
+			continue
+		}
+
+		issueVal := 0
+		if v := item.Data["issue"]; v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				issueVal = n
+			}
+		}
+		prVal := 0
+		if v := item.Data["pr"]; v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				prVal = n
+			}
+		}
+
+		record := EnvRecord{
+			Slot:       slot,
+			Env:        envVal,
+			Namespace:  ns,
+			Issue:      issueVal,
+			PR:         prVal,
+			CreatedAt:  createdAt,
+			ConfigName: item.Metadata.Name,
+		}
+
+		s.logger.Info("garbage-collecting slot", "slot", slot, "env", envVal, "namespace", ns, "configmap", item.Metadata.Name)
+
+		delArgs := []string{"delete", "configmap", item.Metadata.Name, "-n", s.namespace, "--ignore-not-found"}
+		if err := s.client.RunRaw(ctx, nil, delArgs...); err != nil {
+			s.logger.Error("failed to delete state configmap during gc", "name", item.Metadata.Name, "error", err)
+			continue
+		}
+
+		removed = append(removed, record)
+	}
+
+	return removed, nil
+}
+
+func buildSlotOrder(max int, prefer int) []int {
+	const maxSlotsCap = 10000
+
+	var order []int
+	seen := make(map[int]struct{})
+
+	add := func(n int) {
+		if n <= 0 {
+			return
+		}
+		if _, ok := seen[n]; ok {
+			return
+		}
+		seen[n] = struct{}{}
+		order = append(order, n)
+	}
+
+	if prefer > 0 {
+		add(prefer)
+	}
+
+	if max > 0 {
+		for i := 1; i <= max; i++ {
+			add(i)
+		}
+	} else {
+		for i := 1; i <= maxSlotsCap; i++ {
+			add(i)
+		}
+	}
+
+	return order
+}
+
+type cmList struct {
+	Items []cmItem `json:"items"`
+}
+
+type cmItem struct {
+	Metadata struct {
+		Name string `json:"name"`
+	} `json:"metadata"`
+	Data map[string]string `json:"data"`
+}
+
+func (s *Store) listConfigMaps(ctx context.Context) (*cmList, error) {
+	args := []string{"get", "configmap", "-n", s.namespace, "-o", "json"}
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("list state configmaps: %w", err)
+	}
+
+	var list cmList
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("parse state configmaps: %w", err)
+	}
+	return &list, nil
 }

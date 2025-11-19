@@ -28,6 +28,7 @@ type StackConfig struct {
 	Infrastructure []InfraItem            `yaml:"infrastructure,omitempty"`
 	Services       []Service              `yaml:"services,omitempty"`
 	Hooks          HookSet                `yaml:"hooks,omitempty"`
+	State          StateConfig            `yaml:"state,omitempty"`
 }
 
 // NamespaceBlock describes namespace patterns per environment.
@@ -96,6 +97,14 @@ type HostMount struct {
 	Name      string `yaml:"name"`
 	HostPath  string `yaml:"hostPath"`
 	MountPath string `yaml:"mountPath"`
+}
+
+// StateConfig describes how environment state (slots, metadata) is stored.
+// For the initial implementation, only a ConfigMap-based backend is supported.
+type StateConfig struct {
+	Backend            string `yaml:"backend,omitempty"`            // e.g. "configmap"
+	ConfigMapNamespace string `yaml:"configmapNamespace,omitempty"` // namespace where state ConfigMaps live
+	ConfigMapPrefix    string `yaml:"configmapPrefix,omitempty"`    // prefix for state ConfigMap names
 }
 
 // HookSet describes global hooks executed around stack operations.
