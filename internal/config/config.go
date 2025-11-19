@@ -29,6 +29,7 @@ type StackConfig struct {
 	Services       []Service              `yaml:"services,omitempty"`
 	Hooks          HookSet                `yaml:"hooks,omitempty"`
 	State          StateConfig            `yaml:"state,omitempty"`
+	Versions       map[string]string      `yaml:"versions,omitempty"`
 }
 
 // NamespaceBlock describes namespace patterns per environment.
@@ -152,6 +153,7 @@ type TemplateContext struct {
 	Now         time.Time
 	UserVars    env.Vars
 	EnvMap      env.Vars
+	Versions    map[string]string
 }
 
 // rawHeader is a minimal struct used to extract top-level fields before templating.
@@ -244,6 +246,8 @@ func LoadStackConfig(path string, opts LoadOptions) (*StackConfig, TemplateConte
 	if ns != "" {
 		ctx.Namespace = ns
 	}
+
+	ctx.Versions = cfg.Versions
 
 	return &cfg, ctx, nil
 }
