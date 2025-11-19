@@ -20,6 +20,7 @@ import (
 type StackConfig struct {
 	Project        string                 `yaml:"project"`
 	EnvFiles       []string               `yaml:"envFiles,omitempty"`
+	Codex          CodexConfig            `yaml:"codex,omitempty"`
 	Namespace      *NamespaceBlock        `yaml:"namespace,omitempty"`
 	MaxSlots       int                    `yaml:"maxSlots,omitempty"`
 	Registry       string                 `yaml:"registry,omitempty"`
@@ -30,6 +31,29 @@ type StackConfig struct {
 	Hooks          HookSet                `yaml:"hooks,omitempty"`
 	State          StateConfig            `yaml:"state,omitempty"`
 	Versions       map[string]string      `yaml:"versions,omitempty"`
+}
+
+// CodexConfig describes Codex-specific configuration for a project.
+// It allows projects to specify locations of Codex configuration templates and
+// other integration-related settings without hardcoding them in the tool.
+type CodexConfig struct {
+	// ConfigTemplate is the path to a Codex config template (e.g. config.toml)
+	// relative to the project root. The template is rendered with the same
+	// template context as services.yaml.
+	ConfigTemplate string `yaml:"configTemplate,omitempty"`
+	// ExtraTools is an optional list of additional tools available in the
+	// project environment (beyond the core toolset like kubectl/gh/curl/rg/jq/bash/Python3).
+	// Additional tools must be installed in the project environment separately (in the codex docker image)
+	ExtraTools []string `yaml:"extraTools,omitempty"`
+	// ProjectContext is an optional free-form text block that describes
+	// project-specific context (documentation, special entrypoints, URLs, etc.)
+	// and can be injected into builtin prompts.
+	ProjectContext string `yaml:"projectContext,omitempty"`
+	// ServicesOverview is an optional free-form text block that describes
+	// available infrastructure and application services with their URLs/ports.
+	// It is intended to be rendered into prompts so that agents know what
+	// services and endpoints are reachable.
+	ServicesOverview string `yaml:"servicesOverview,omitempty"`
 }
 
 // NamespaceBlock describes namespace patterns per environment.
@@ -143,7 +167,8 @@ type LoadOptions struct {
 	VarFiles  []string
 }
 
-// TemplateContext represents the data exposed to Go-templates when rendering services.yaml.
+// TemplateContext represents the data exposed to Go-templates when rendering services.yaml
+// and other project templates (manifests, prompts, Codex config).
 type TemplateContext struct {
 	Env         string
 	Namespace   string
@@ -154,6 +179,8 @@ type TemplateContext struct {
 	UserVars    env.Vars
 	EnvMap      env.Vars
 	Versions    map[string]string
+	BaseDomain  map[string]string
+	Codex       CodexConfig
 }
 
 // rawHeader is a minimal struct used to extract top-level fields before templating.
@@ -248,6 +275,8 @@ func LoadStackConfig(path string, opts LoadOptions) (*StackConfig, TemplateConte
 	}
 
 	ctx.Versions = cfg.Versions
+	ctx.BaseDomain = cfg.BaseDomain
+	ctx.Codex = cfg.Codex
 
 	return &cfg, ctx, nil
 }
@@ -295,6 +324,7 @@ func buildFuncMap(ctx TemplateContext) template.FuncMap {
 		"envOr":    funcEnvOr(ctx.EnvMap),
 		"ternary":  funcTernary,
 		"now":      func() time.Time { return ctx.Now },
+		"join":     funcJoin,
 	}
 }
 
@@ -339,6 +369,11 @@ func funcTernary(cond bool, a, b any) any {
 		return a
 	}
 	return b
+}
+
+// funcJoin joins a slice of strings with the given separator.
+func funcJoin(values []string, sep string) string {
+	return strings.Join(values, sep)
 }
 
 // ResolveEnvironment returns the effective environment configuration for the given name,

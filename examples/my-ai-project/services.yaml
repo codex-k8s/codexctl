@@ -11,7 +11,7 @@ namespace:
 
 maxSlots: 0
 
-registry: "{{ envOr \"REGISTRY_HOST\" \"localhost:32000\" }}"
+registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 
 state:
   backend: configmap
@@ -66,8 +66,8 @@ services:
     manifests:
       - path: services/django_backend/deploy.yaml
     image:
-      repository: "{{ .registry }}/my-ai-project/django-backend"
-      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"DJANGO_BACKEND_VERSION\") }}"
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-ai-project/django-backend'
+      tagTemplate: '{{ printf "%s-%s" .Env (index .EnvMap "DJANGO_BACKEND_VERSION") }}'
     overlays:
       ai:
         hostMounts:
@@ -79,8 +79,8 @@ services:
     manifests:
       - path: services/user_gateway/deploy.yaml
     image:
-      repository: "{{ .registry }}/my-ai-project/user-gateway"
-      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"USER_GATEWAY_VERSION\") }}"
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-ai-project/user-gateway'
+      tagTemplate: '{{ printf "%s-%s" .Env (index .EnvMap "USER_GATEWAY_VERSION") }}'
     overlays:
       ai:
         hostMounts:

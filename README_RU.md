@@ -14,13 +14,13 @@
 
 ## Статус
 
-Проект находится на ранней стадии scaffolding:
+Проект уже пригоден к использованию, но активная доработка продолжается:
 
-- создан Go‑модуль и структура пакетов;
-- настроен CLI на базе Cobra с подкомандами, но сами команды пока только сообщают, что они не реализованы;
+- создан Go‑модуль и слоистая структура пакетов;
+- реализованы основные команды (`render`, `apply`, `destroy`, `status`, `manage-env`, `prompt`, `doctor`);
 - логирование построено на `log/slog` с цветным handler’ом (`tint`).
 
-Уже сейчас можно собрать бинарь и посмотреть справку:
+Можно собрать бинарь и посмотреть справку:
 
 ```bash
 go build ./cmd/codexctl
@@ -45,7 +45,7 @@ namespace:
 
 maxSlots: 0
 
-registry: "{{ .EnvMap.REGISTRY_HOST | default \"localhost:32000\" }}"
+registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 
 baseDomain:
   dev:     "dev.my-ai-project.com"
@@ -77,8 +77,8 @@ services:
     manifests:
       - path: services/django_backend/deploy.yaml
     image:
-      repository: "{{ .registry }}/my-ai-project/django-backend"
-      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"DJANGO_BACKEND_VERSION\") }}"
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-ai-project/django-backend'
+      tagTemplate: '{{ printf "%s-%s" .Env (index .Versions "django-backend") }}'
     overlays:
       dev:
         hostMounts:
@@ -90,8 +90,14 @@ services:
     manifests:
       - path: services/user_gateway/deploy.yaml
     image:
-      repository: "{{ .registry }}/my-ai-project/user-gateway"
-      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"USER_GATEWAY_VERSION\") }}"
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-ai-project/user-gateway'
+      tagTemplate: '{{ printf "%s-%s" .Env (index .Versions "user-gateway") }}'
+
+codex:
+  # Путь до шаблона конфигурации Codex (например TOML) относительно корня проекта.
+  # Рендерится в том же контексте, что и services.yaml, и может быть материализован командой:
+  #   codexctl prompt config --env ai --slot 1 --out ~/.codex/config.toml
+  configTemplate: "deploy/codex/config.toml"
 ```
 
 Фактическая схема `services.yaml` будет эволюционировать, но даже этот небольшой пример показывает направление:

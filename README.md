@@ -14,13 +14,13 @@ The tool is designed to be project‑agnostic: all project‑specific details (n
 
 ## Status
 
-The project is at an early scaffolding stage:
+The project is functional but still evolving:
 
-- Go module and package layout are created;
-- Cobra‑based CLI with subcommands is wired, but commands only report that they are not implemented yet;
+- Go module and layered package layout are in place;
+- core commands (`render`, `apply`, `destroy`, `status`, `manage-env`, `prompt`, `doctor`) are implemented for real use;
 - logging is based on `log/slog` with a color handler (`tint`).
 
-You can already build the binary and inspect the help:
+You can build the binary and inspect the help:
 
 ```bash
 go build ./cmd/codexctl
@@ -45,7 +45,7 @@ namespace:
 
 maxSlots: 0
 
-registry: "{{ .EnvMap.REGISTRY_HOST | default \"localhost:32000\" }}"
+registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 
 baseDomain:
   dev:     "dev.my-ai-project.com"
@@ -77,8 +77,8 @@ services:
     manifests:
       - path: services/django_backend/deploy.yaml
     image:
-      repository: "{{ .registry }}/my-ai-project/django-backend"
-      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"DJANGO_BACKEND_VERSION\") }}"
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-ai-project/django-backend'
+      tagTemplate: '{{ printf "%s-%s" .Env (index .Versions "django-backend") }}'
     overlays:
       dev:
         hostMounts:
@@ -90,8 +90,14 @@ services:
     manifests:
       - path: services/user_gateway/deploy.yaml
     image:
-      repository: "{{ .registry }}/my-ai-project/user-gateway"
-      tagTemplate: "{{ printf \"%s-%s\" .Env (index .EnvMap \"USER_GATEWAY_VERSION\") }}"
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-ai-project/user-gateway'
+      tagTemplate: '{{ printf "%s-%s" .Env (index .Versions "user-gateway") }}'
+
+codex:
+  # Path to a Codex config template (e.g. TOML) relative to the project root.
+  # It is rendered with the same template context as services.yaml and can be materialized via:
+  #   codexctl prompt config --env ai --slot 1 --out ~/.codex/config.toml
+  configTemplate: "deploy/codex/config.toml"
 ```
 
 The actual `services.yaml` schema will evolve, but even this small sample illustrates the direction:
