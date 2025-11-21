@@ -84,6 +84,13 @@ func newDestroyCommand(opts *Options) *cobra.Command {
 				}
 			}
 			for _, svc := range stackCfg.Services {
+				enabled, err := serviceEnabled(svc, ctxData)
+				if err != nil {
+					return err
+				}
+				if !enabled {
+					continue
+				}
 				if err := hookExec.RunSteps(ctx, svc.Hooks.BeforeDestroy, hookCtx); err != nil {
 					return err
 				}
@@ -101,6 +108,13 @@ func newDestroyCommand(opts *Options) *cobra.Command {
 				}
 			}
 			for _, svc := range stackCfg.Services {
+				enabled, err := serviceEnabled(svc, ctxData)
+				if err != nil {
+					return err
+				}
+				if !enabled {
+					continue
+				}
 				if err := hookExec.RunSteps(ctx, svc.Hooks.AfterDestroy, hookCtx); err != nil {
 					return err
 				}

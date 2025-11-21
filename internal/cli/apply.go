@@ -95,6 +95,13 @@ func newApplyCommand(opts *Options) *cobra.Command {
 				}
 			}
 			for _, svc := range stackCfg.Services {
+				enabled, err := serviceEnabled(svc, ctxData)
+				if err != nil {
+					return err
+				}
+				if !enabled {
+					continue
+				}
 				if err := hookExec.RunSteps(ctx, svc.Hooks.BeforeApply, hookCtx); err != nil {
 					return err
 				}
@@ -112,6 +119,13 @@ func newApplyCommand(opts *Options) *cobra.Command {
 				}
 			}
 			for _, svc := range stackCfg.Services {
+				enabled, err := serviceEnabled(svc, ctxData)
+				if err != nil {
+					return err
+				}
+				if !enabled {
+					continue
+				}
 				if err := hookExec.RunSteps(ctx, svc.Hooks.AfterApply, hookCtx); err != nil {
 					return err
 				}
