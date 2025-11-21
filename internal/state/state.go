@@ -181,7 +181,6 @@ func (s *Store) AllocateSlot(
 		args := []string{
 			"-n", s.namespace,
 			"create", "configmap", name,
-			"--labels", "app=codex-env",
 			"--from-literal=slot=" + strconv.Itoa(slot),
 			"--from-literal=env=" + envName,
 			"--from-literal=namespace=" + ns,
