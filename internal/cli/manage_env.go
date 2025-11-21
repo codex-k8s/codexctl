@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codex-k8s/codexctl/internal/prompt"
 	"github.com/spf13/cobra"
 
 	"github.com/codex-k8s/codexctl/internal/config"
@@ -533,7 +534,10 @@ func newManageEnvCommentCommand(opts *Options) *cobra.Command {
 				siteHost = fmt.Sprintf("dev-%d.%s", slot, ctxData.BaseDomain["ai"])
 			}
 
-			body := renderEnvComment(siteHost, slot, strings.ToLower(lang))
+			body, err := prompt.RenderEnvComment(strings.ToLower(lang), siteHost, slot, ctxData.Codex.Links)
+			if err != nil {
+				return err
+			}
 			fmt.Println(body)
 			return nil
 		},

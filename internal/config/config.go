@@ -41,6 +41,8 @@ type CodexConfig struct {
 	// relative to the project root. The template is rendered with the same
 	// template context as services.yaml.
 	ConfigTemplate string `yaml:"configTemplate,omitempty"`
+	// Links defines project-specific helpful links for environment comments (e.g., Swagger, Admin panels).
+	Links []Link `yaml:"links,omitempty"`
 	// ExtraTools is an optional list of additional tools available in the
 	// project environment (beyond the core toolset like kubectl/gh/curl/rg/jq/bash/Python3).
 	// Additional tools must be installed in the project environment separately (in the codex docker image)
@@ -66,6 +68,12 @@ type CodexTimeouts struct {
 	Exec string `yaml:"exec,omitempty"`
 	// Rollout is the timeout passed to "kubectl rollout status" (e.g. "300s").
 	Rollout string `yaml:"rollout,omitempty"`
+}
+
+// Link describes a named link to expose in comments/UI (title + path).
+type Link struct {
+	Title string `yaml:"title,omitempty"`
+	Path  string `yaml:"path,omitempty"`
 }
 
 // NamespaceBlock describes namespace patterns per environment.

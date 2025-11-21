@@ -1,0 +1,7 @@
+Запуск Codex завершён
+
+- Слот: {{ .Slot }}
+- Хост: https://{{ .Host }}
+{{- range .Links }}
+- {{ .Title }}: {{ .URL }}
+{{- end }}

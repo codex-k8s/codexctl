@@ -1,0 +1,7 @@
+Codex run completed
+
+- Slot: {{ .Slot }}
+- Host: https://{{ .Host }}
+{{- range .Links }}
+- {{ .Title }}: {{ .URL }}
+{{- end }}
