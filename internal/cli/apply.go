@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -55,13 +56,23 @@ func newApplyCommand(opts *Options) *cobra.Command {
 				return err
 			}
 
+			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+
+			// Ensure target namespace exists before running hooks or applying manifests.
+			if ns := strings.TrimSpace(ctxData.Namespace); ns != "" {
+				nsCtx, cancelNS := context.WithTimeout(cmd.Context(), 2*time.Minute)
+				defer cancelNS()
+				if err := kubeClient.RunRaw(nsCtx, nil, "get", "ns", ns); err != nil {
+					logger.Info("creating namespace before apply", "env", opts.Env, "namespace", ns)
+					_ = kubeClient.RunRaw(nsCtx, nil, "create", "ns", ns)
+				}
+			}
+
 			eng := engine.NewEngine()
 			manifests, err := eng.RenderStack(stackCfg, ctxData)
 			if err != nil {
 				return err
 			}
-
-			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 
 			hookExec := hooks.NewExecutor(logger)
 			hookCtx := hooks.StepContext{
