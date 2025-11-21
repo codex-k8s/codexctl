@@ -93,14 +93,10 @@ func NewStore(stackCfg *config.StackConfig, client *kube.Client, logger *slog.Lo
 
 // List returns all stored environment records.
 func (s *Store) List(ctx context.Context) ([]EnvRecord, error) {
-	args := []string{"-n", s.namespace, "get", "configmap", "-l", "app=codex-env", "-o", "json"}
+	args := []string{"-n", s.namespace, "get", "configmap", "-o", "json"}
 	out, err := s.client.RunAndCapture(ctx, nil, args...)
 	if err != nil {
-		args = []string{"-n", s.namespace, "get", "configmap", "-o", "json"}
-		out, err = s.client.RunAndCapture(ctx, nil, args...)
-		if err != nil {
-			return nil, fmt.Errorf("list configmaps for state: %w", err)
-		}
+		return nil, fmt.Errorf("list configmaps for state: %w", err)
 	}
 
 	var raw cmList
