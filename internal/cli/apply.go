@@ -120,7 +120,21 @@ func newApplyCommand(opts *Options) *cobra.Command {
 
 			logger.Info("applying manifests", "env", opts.Env, "namespace", ctxData.Namespace)
 			if err := kubeClient.Apply(ctx, manifests); err != nil {
-				return err
+				msg := err.Error()
+				if strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") ||
+					strings.Contains(msg, "ingress-nginx-controller-admission") {
+					logger.Warn("apply failed due to ingress-nginx admission webhook; retrying once", "error", err)
+					select {
+					case <-ctx.Done():
+						return err
+					case <-time.After(10 * time.Second):
+					}
+					if err2 := kubeClient.Apply(ctx, manifests); err2 != nil {
+						return err2
+					}
+				} else {
+					return err
+				}
 			}
 
 			// Infrastructure/service hooks and stack-level hooks after apply.
