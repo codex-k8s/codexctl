@@ -82,4 +82,3 @@ RUN go build -o /usr/local/bin/codexctl ./cmd/codexctl
 WORKDIR /workspace
 
 CMD ["bash", "-lc", "codexctl --help || sleep infinity"]
-

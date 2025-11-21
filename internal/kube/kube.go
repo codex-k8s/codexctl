@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 )
 
 // Client wraps kubectl execution with optional kubeconfig and context selection.
@@ -17,6 +19,7 @@ type Client struct {
 
 // NewClient constructs a new Kubernetes client wrapper.
 func NewClient(kubeconfig, context string) *Client {
+	kubeconfig = expandKubeconfigPath(kubeconfig)
 	return &Client{
 		Kubeconfig: kubeconfig,
 		Context:    context,
@@ -122,4 +125,17 @@ func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) e
 		return fmt.Errorf("kubectl %v failed: %w", args, err)
 	}
 	return nil
+}
+
+// expandKubeconfigPath expands leading ~ to the user home directory.
+func expandKubeconfigPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if strings.HasPrefix(path, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(path, "~"))
+		}
+	}
+	return path
 }
