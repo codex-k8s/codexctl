@@ -105,3 +105,5 @@ The actual `services.yaml` schema will evolve, but even this small sample illust
 - behavior is described declaratively in configuration;
 - adding a new service does not require Go code changes;
 - each project is free to define its own namespaces, domains, image tagging strategies and slot patterns.
+
+The runner should have `go` and `kubectl` installed, as well as access configured to the required Kubernetes clusters.
