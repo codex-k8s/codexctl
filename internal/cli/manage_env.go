@@ -2,7 +2,12 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -25,6 +30,10 @@ func newManageEnvCommand(opts *Options) *cobra.Command {
 	cmd.AddCommand(
 		newManageEnvCreateCommand(opts),
 		newManageEnvGCCommand(opts),
+		newManageEnvResolveCommand(opts),
+		newManageEnvSetCommand(opts),
+		newManageEnvSyncCodeCommand(opts),
+		newManageEnvCommentCommand(opts),
 	)
 
 	return cmd
@@ -232,5 +241,306 @@ func newManageEnvGCCommand(opts *Options) *cobra.Command {
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 
+	return cmd
+}
+
+// syncSources copies files from source to target using rsync (if available) or simple copy.
+func syncSources(source, target string) error {
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return fmt.Errorf("create target dir %q: %w", target, err)
+	}
+
+	// Ensure trailing slash for rsync semantics
+	src := source
+	if !strings.HasSuffix(src, string(os.PathSeparator)) {
+		src += string(os.PathSeparator)
+	}
+	tgt := target
+	if !strings.HasSuffix(tgt, string(os.PathSeparator)) {
+		tgt += string(os.PathSeparator)
+	}
+
+	if _, err := exec.LookPath("rsync"); err == nil {
+		cmd := exec.Command("rsync", "-a", "--delete", "--no-perms", "--no-owner", "--no-group", src, tgt)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("rsync sources: %w", err)
+		}
+		return nil
+	}
+
+	return copyDir(src, tgt)
+}
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode())
+	})
+}
+
+func fixWorkspacePermissions(ctx context.Context, client *kube.Client, namespace string) error {
+	u := os.Getuid()
+	g := os.Getgid()
+	cmdArgs := []string{
+		"-n", namespace,
+		"exec", "deploy/codex",
+		"--",
+		"sh", "-lc",
+		fmt.Sprintf("chown -R %d:%d /workspace || true; chmod -R g+rwX /workspace || true", u, g),
+	}
+	return client.RunRaw(ctx, nil, cmdArgs...)
+}
+
+func renderEnvComment(host string, slot int, lang string) string {
+	switch lang {
+	case "ru":
+		return fmt.Sprintf("🧪 Завершён запуск Codex\n\n- Slot: %d\n- Host: https://%s\n- Explorer: https://%s/explorer\n- gRPC Swagger: https://%s/grpc/swagger/\n", slot, host, host, host)
+	default:
+		return fmt.Sprintf("🧪 Codex run completed\n\n- Slot: %d\n- Host: https://%s\n- Explorer: https://%s/explorer\n- gRPC Swagger: https://%s/grpc/swagger/\n", slot, host, host, host)
+	}
+}
+
+// newManageEnvResolveCommand creates "manage-env resolve" to find slot/namespace by slot/issue/pr.
+func newManageEnvResolveCommand(opts *Options) *cobra.Command {
+	var issue, pr, slot int
+	var output string
+	cmd := &cobra.Command{
+		Use:   "resolve",
+		Short: "Resolve slot and namespace by slot/issue/pr",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+
+			loadOpts := config.LoadOptions{
+				Env: envName,
+			}
+
+			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			if err != nil {
+				return err
+			}
+			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
+			if err != nil {
+				return err
+			}
+
+			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+			store, err := state.NewStore(stackCfg, kubeClient, logger)
+			if err != nil {
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancel()
+
+			records, err := store.List(ctx)
+			if err != nil {
+				return err
+			}
+
+			var found *state.EnvRecord
+			for i := range records {
+				rec := records[i]
+				if envName != "" && rec.Env != envName {
+					continue
+				}
+				if slot > 0 && rec.Slot != slot {
+					continue
+				}
+				if issue > 0 && rec.Issue != issue {
+					continue
+				}
+				if pr > 0 && rec.PR != pr {
+					continue
+				}
+				found = &rec
+				break
+			}
+
+			if found == nil {
+				return fmt.Errorf("no slot found (env=%s, slot=%d, issue=%d, pr=%d)", envName, slot, issue, pr)
+			}
+
+			switch strings.ToLower(output) {
+			case "json":
+				type out struct {
+					Slot      int    `json:"slot"`
+					Namespace string `json:"namespace"`
+					Env       string `json:"env"`
+				}
+				payload, _ := json.Marshal(out{Slot: found.Slot, Namespace: found.Namespace, Env: found.Env})
+				fmt.Println(string(payload))
+			default:
+				fmt.Printf("slot: %d\n", found.Slot)
+				fmt.Printf("namespace: %s\n", found.Namespace)
+				fmt.Printf("env: %s\n", found.Env)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment type (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Explicit slot number")
+	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number to resolve")
+	cmd.Flags().IntVar(&pr, "pr", 0, "PR number to resolve")
+	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
+
+	return cmd
+}
+
+// newManageEnvSetCommand creates "manage-env set" to patch issue/pr fields for a slot.
+func newManageEnvSetCommand(opts *Options) *cobra.Command {
+	var issue, pr, slot int
+	cmd := &cobra.Command{
+		Use:   "set",
+		Short: "Update metadata (issue/pr) for a slot",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+			if slot <= 0 {
+				return fmt.Errorf("slot must be >0")
+			}
+
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+
+			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName})
+			if err != nil {
+				return err
+			}
+			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
+			if err != nil {
+				return err
+			}
+			store, err := state.NewStore(stackCfg, kube.NewClient(envCfg.Kubeconfig, envCfg.Context), logger)
+			if err != nil {
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancel()
+			return store.UpdateAttributes(ctx, slot, issue, pr)
+		},
+	}
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment type (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number to update (required)")
+	_ = cmd.MarkFlagRequired("slot")
+	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number to set")
+	cmd.Flags().IntVar(&pr, "pr", 0, "PR number to set")
+	return cmd
+}
+
+// newManageEnvSyncCodeCommand syncs repository sources into slot workspace with optional chown.
+func newManageEnvSyncCodeCommand(opts *Options) *cobra.Command {
+	var slot int
+	var namespace string
+	var codeRootBase string
+	var source string
+	cmd := &cobra.Command{
+		Use:   "sync-code",
+		Short: "Sync sources into slot workspace (rsync + optional chmod in codex pod)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+			if slot <= 0 {
+				return fmt.Errorf("slot must be >0")
+			}
+			if codeRootBase == "" {
+				return fmt.Errorf("code-root-base is required")
+			}
+			if source == "" {
+				source = "."
+			}
+
+			target := fmt.Sprintf("%s/%d/src", strings.TrimSuffix(codeRootBase, "/"), slot)
+			if err := syncSources(source, target); err != nil {
+				return err
+			}
+
+			if namespace != "" {
+				envName := opts.Env
+				if envName == "" {
+					envName = "ai"
+				}
+				stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName})
+				if err != nil {
+					return err
+				}
+				envCfg, err := config.ResolveEnvironment(stackCfg, envName)
+				if err != nil {
+					return err
+				}
+				kClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+				if err := fixWorkspacePermissions(cmd.Context(), kClient, namespace); err != nil {
+					logger.Warn("workspace permission fix failed", "error", err)
+				}
+			}
+
+			fmt.Printf("slot: %d\n", slot)
+			fmt.Printf("target: %s\n", target)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment type (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number to sync (required)")
+	_ = cmd.MarkFlagRequired("slot")
+	cmd.Flags().StringVar(&namespace, "namespace", "", "Namespace of slot (for permission fix)")
+	cmd.Flags().StringVar(&codeRootBase, "code-root-base", os.Getenv("CODE_ROOT_BASE"), "Base path for slot workspaces")
+	cmd.Flags().StringVar(&source, "source", ".", "Source directory to sync")
+	return cmd
+}
+
+// newManageEnvCommentCommand renders a comment with env links.
+func newManageEnvCommentCommand(opts *Options) *cobra.Command {
+	var lang string
+	var slot int
+	cmd := &cobra.Command{
+		Use:   "comment",
+		Short: "Render environment links for PR/Issue comments",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if slot <= 0 {
+				return fmt.Errorf("slot must be >0")
+			}
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+			_, ctxData, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName, Slot: slot})
+			if err != nil {
+				return err
+			}
+			siteHost := ctxData.BaseDomain[envName]
+			if envName == "ai" {
+				siteHost = fmt.Sprintf("dev-%d.%s", slot, ctxData.BaseDomain["ai"])
+			}
+
+			body := renderEnvComment(siteHost, slot, strings.ToLower(lang))
+			fmt.Println(body)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number (required)")
+	_ = cmd.MarkFlagRequired("slot")
+	cmd.Flags().StringVar(&lang, "lang", "en", "Language for the comment (en|ru)")
 	return cmd
 }

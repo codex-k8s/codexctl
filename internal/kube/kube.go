@@ -69,6 +69,34 @@ func (c *Client) RunRaw(ctx context.Context, stdin []byte, args ...string) error
 	return c.runKubectl(ctx, stdin, args...)
 }
 
+// RunAndCapture executes kubectl and returns stdout bytes (stderr streamed).
+func (c *Client) RunAndCapture(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
+	cmdArgs := make([]string, 0, len(args)+4)
+	if c.Context != "" {
+		cmdArgs = append(cmdArgs, "--context", c.Context)
+	}
+	cmdArgs = append(cmdArgs, args...)
+
+	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
+	cmd.Stderr = os.Stderr
+
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+
+	if c.Kubeconfig != "" {
+		env := os.Environ()
+		env = append(env, "KUBECONFIG="+c.Kubeconfig)
+		cmd.Env = env
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("kubectl %v failed: %w", args, err)
+	}
+	return out, nil
+}
+
 func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) error {
 	cmdArgs := make([]string, 0, len(args)+4)
 	if c.Context != "" {

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -70,6 +69,75 @@ func NewStore(stackCfg *config.StackConfig, client *kube.Client, logger *slog.Lo
 	}, nil
 }
 
+// List returns all stored environment records.
+func (s *Store) List(ctx context.Context) ([]EnvRecord, error) {
+	args := []string{"-n", s.namespace, "get", "configmap", "-l", "app=codex-env", "-o", "json"}
+	out, err := s.client.RunAndCapture(ctx, nil, args...)
+	if err != nil {
+		args = []string{"-n", s.namespace, "get", "configmap", "-o", "json"}
+		out, err = s.client.RunAndCapture(ctx, nil, args...)
+		if err != nil {
+			return nil, fmt.Errorf("list configmaps for state: %w", err)
+		}
+	}
+
+	var raw cmList
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("decode configmap list: %w", err)
+	}
+
+	var res []EnvRecord
+	for _, item := range raw.Items {
+		if item.Metadata.Name == "" || !strings.HasPrefix(item.Metadata.Name, s.prefix) {
+			continue
+		}
+		rec := EnvRecord{
+			ConfigName: item.Metadata.Name,
+			Env:        strings.TrimSpace(item.Data["env"]),
+			Namespace:  strings.TrimSpace(item.Data["namespace"]),
+		}
+		if slotStr := strings.TrimSpace(item.Data["slot"]); slotStr != "" {
+			rec.Slot, _ = strconv.Atoi(slotStr)
+		}
+		if issueStr := strings.TrimSpace(item.Data["issue"]); issueStr != "" {
+			rec.Issue, _ = strconv.Atoi(issueStr)
+		}
+		if prStr := strings.TrimSpace(item.Data["pr"]); prStr != "" {
+			rec.PR, _ = strconv.Atoi(prStr)
+		}
+		if ts := strings.TrimSpace(item.Data["createdAt"]); ts != "" {
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				rec.CreatedAt = t
+			}
+		}
+		res = append(res, rec)
+	}
+	return res, nil
+}
+
+// UpdateAttributes updates issue/pr fields for a stored slot.
+func (s *Store) UpdateAttributes(ctx context.Context, slot int, issue int, pr int) error {
+	name := fmt.Sprintf("%s%d", s.prefix, slot)
+	patchData := map[string]string{}
+	if issue > 0 {
+		patchData["issue"] = strconv.Itoa(issue)
+	}
+	if pr > 0 {
+		patchData["pr"] = strconv.Itoa(pr)
+	}
+	if len(patchData) == 0 {
+		return nil
+	}
+	patch := map[string]any{"data": patchData}
+	patchBytes, _ := json.Marshal(patch)
+
+	args := []string{"-n", s.namespace, "patch", "configmap", name, "--type", "merge", "-p", string(patchBytes)}
+	if _, err := s.client.RunAndCapture(ctx, nil, args...); err != nil {
+		return fmt.Errorf("patch configmap %s: %w", name, err)
+	}
+	return nil
+}
+
 // AllocateSlot reserves a new slot and returns its metadata.
 // max == 0 means unlimited slots; prefer >0 is attempted first.
 func (s *Store) AllocateSlot(
@@ -111,8 +179,9 @@ func (s *Store) AllocateSlot(
 		name := fmt.Sprintf("%s%d", s.prefix, slot)
 
 		args := []string{
-			"create", "configmap", name,
 			"-n", s.namespace,
+			"create", "configmap", name,
+			"--labels", "app=codex-env",
 			"--from-literal=slot=" + strconv.Itoa(slot),
 			"--from-literal=env=" + envName,
 			"--from-literal=namespace=" + ns,
@@ -122,7 +191,7 @@ func (s *Store) AllocateSlot(
 			"--from-literal=createdAt=" + now.Format(time.RFC3339),
 		}
 
-		err = s.client.RunRaw(ctx, nil, args...)
+		_, err = s.client.RunAndCapture(ctx, nil, args...)
 		if err == nil {
 			return EnvRecord{
 				Slot:       slot,
@@ -261,15 +330,15 @@ type cmList struct {
 
 type cmItem struct {
 	Metadata struct {
-		Name string `json:"name"`
+		Name              string `json:"name"`
+		CreationTimestamp string `json:"creationTimestamp"`
 	} `json:"metadata"`
 	Data map[string]string `json:"data"`
 }
 
 func (s *Store) listConfigMaps(ctx context.Context) (*cmList, error) {
-	args := []string{"get", "configmap", "-n", s.namespace, "-o", "json"}
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
-	out, err := cmd.Output()
+	args := []string{"-n", s.namespace, "get", "configmap", "-o", "json"}
+	out, err := s.client.RunAndCapture(ctx, nil, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list state configmaps: %w", err)
 	}
