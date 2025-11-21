@@ -4,6 +4,7 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -31,6 +32,27 @@ type EnvRecord struct {
 	PR         int
 	CreatedAt  time.Time
 	ConfigName string
+}
+
+// NoFreeSlotError indicates that there are no free slots available.
+type NoFreeSlotError struct {
+	Max int
+}
+
+func (e *NoFreeSlotError) Error() string {
+	if e == nil {
+		return "no free slot"
+	}
+	if e.Max > 0 {
+		return fmt.Sprintf("no free slot found in range 1..%d", e.Max)
+	}
+	return "no free slot found up to allocation limit"
+}
+
+// IsNoFreeSlotError reports whether err indicates that no free slot is available.
+func IsNoFreeSlotError(err error) bool {
+	var target *NoFreeSlotError
+	return errors.As(err, &target)
 }
 
 // NewStore constructs a new Store instance for the given stack state configuration.
@@ -208,9 +230,9 @@ func (s *Store) AllocateSlot(
 	}
 
 	if max > 0 {
-		return zero, fmt.Errorf("no free slot found in range 1..%d", max)
+		return zero, &NoFreeSlotError{Max: max}
 	}
-	return zero, fmt.Errorf("no free slot found up to allocation limit")
+	return zero, &NoFreeSlotError{Max: 0}
 }
 
 // GarbageCollect removes stale environment records based on TTL and returns the list of removed slots.

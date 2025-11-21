@@ -91,17 +91,44 @@ func newManageEnvCreateCommand(opts *Options) *cobra.Command {
 			prNum, _ := cmd.Flags().GetInt("pr")
 			prefer, _ := cmd.Flags().GetInt("prefer")
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Minute)
+			// Block while waiting for a free slot: when all slots are busy, do not fail immediately,
+			// but retry allocation until a global timeout is reached.
+			const waitTimeout = 6 * time.Hour
+			const retryDelay = 30 * time.Second
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), waitTimeout)
 			defer cancel()
 
-			record, err := store.AllocateSlot(ctx, stackCfg, ctxData, envName, maxSlots, prefer, issueNum, prNum)
-			if err != nil {
-				return err
-			}
+			for {
+				record, err := store.AllocateSlot(ctx, stackCfg, ctxData, envName, maxSlots, prefer, issueNum, prNum)
+				if err == nil {
+					logger.Info("slot allocated",
+						"slot", record.Slot,
+						"namespace", record.Namespace,
+						"env", record.Env,
+						"issue", record.Issue,
+						"pr", record.PR,
+					)
+					return nil
+				}
 
-			fmt.Printf("slot: %d\n", record.Slot)
-			fmt.Printf("namespace: %s\n", record.Namespace)
-			return nil
+				// If the error is not about lack of free slots, return immediately.
+				if !state.IsNoFreeSlotError(err) {
+					return err
+				}
+
+				logger.Info("no free slot available yet; waiting before retry",
+					"env", envName,
+					"maxSlots", maxSlots,
+					"retryDelay", retryDelay.String(),
+				)
+
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("timed out waiting for free slot (waited %s): %w", waitTimeout, ctx.Err())
+				case <-time.After(retryDelay):
+				}
+			}
 		},
 	}
 
@@ -391,9 +418,13 @@ func newManageEnvResolveCommand(opts *Options) *cobra.Command {
 				payload, _ := json.Marshal(out{Slot: found.Slot, Namespace: found.Namespace, Env: found.Env})
 				fmt.Println(string(payload))
 			default:
-				fmt.Printf("slot: %d\n", found.Slot)
-				fmt.Printf("namespace: %s\n", found.Namespace)
-				fmt.Printf("env: %s\n", found.Env)
+				logger.Info("resolved slot",
+					"slot", found.Slot,
+					"namespace", found.Namespace,
+					"env", found.Env,
+					"issue", found.Issue,
+					"pr", found.PR,
+				)
 			}
 			return nil
 		},
@@ -496,8 +527,13 @@ func newManageEnvSyncCodeCommand(opts *Options) *cobra.Command {
 				}
 			}
 
-			fmt.Printf("slot: %d\n", slot)
-			fmt.Printf("target: %s\n", target)
+			logger.Info("slot workspace synced",
+				"slot", slot,
+				"target", target,
+				"source", source,
+				"env", opts.Env,
+				"namespace", namespace,
+			)
 			return nil
 		},
 	}
