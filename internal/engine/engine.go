@@ -42,6 +42,13 @@ func (e *Engine) RenderStack(cfg *config.StackConfig, ctx config.TemplateContext
 
 	// Render service manifests with per-environment overlays.
 	for _, svc := range cfg.Services {
+		ok, err := evaluateServiceWhen(svc.When, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate when for service %q: %w", svc.Name, err)
+		}
+		if !ok {
+			continue
+		}
 		overlay := svc.Overlays[ctx.Env]
 		for _, ref := range svc.Manifests {
 			docs, err := e.loadManifestDocuments(ref.Path, ctx)
@@ -76,6 +83,25 @@ func (e *Engine) RenderStack(cfg *config.StackConfig, ctx config.TemplateContext
 	}
 
 	return buf.Bytes(), nil
+}
+
+func evaluateServiceWhen(expr string, ctx config.TemplateContext) (bool, error) {
+	if strings.TrimSpace(expr) == "" {
+		return true, nil
+	}
+	rendered, err := config.RenderTemplate("service-when", []byte(expr), ctx)
+	if err != nil {
+		return false, err
+	}
+	s := strings.TrimSpace(string(rendered))
+	if s == "" {
+		return true, nil
+	}
+	ls := strings.ToLower(s)
+	if ls == "false" || ls == "0" || ls == "no" {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (e *Engine) loadManifestDocuments(path string, ctx config.TemplateContext) ([]map[string]any, error) {

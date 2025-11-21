@@ -115,6 +115,7 @@ type Service struct {
 	Manifests []ManifestRef      `yaml:"manifests"`
 	Image     ServiceImage       `yaml:"image,omitempty"`
 	Ingress   *ServiceIngress    `yaml:"ingress,omitempty"`
+	When      string             `yaml:"when,omitempty"`
 	Overlays  map[string]Overlay `yaml:"overlays,omitempty"`
 	Hooks     ResourceHooks      `yaml:"hooks,omitempty"`
 }
@@ -268,6 +269,14 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 		EnvMap:      envMap,
 		Versions:    header.Versions,
 		BaseDomain:  header.BaseDomain,
+	}
+
+	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Project != "" && ctx.Env != "" {
+		ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
+	}
+
+	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Project != "" && ctx.Env != "" {
+		ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
 	}
 
 	rendered, err := executeTemplate(rawBytes, ctx)
