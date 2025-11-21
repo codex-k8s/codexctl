@@ -464,6 +464,11 @@ func ResolveNamespace(cfg *StackConfig, ctx TemplateContext, envName string) (st
 	if ctx.Namespace != "" {
 		return ctx.Namespace, nil
 	}
+	// For ai environments, derive namespace directly from project and slot
+	// to ensure stable mapping: <project>-dev-<slot>.
+	if envName == "ai" && ctx.Project != "" && ctx.Slot > 0 {
+		return fmt.Sprintf("%s-dev-%d", ctx.Project, ctx.Slot), nil
+	}
 	if cfg == nil || cfg.Namespace == nil {
 		return "", nil
 	}
