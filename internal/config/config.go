@@ -205,9 +205,10 @@ type TemplateContext struct {
 
 // rawHeader is a minimal struct used to extract top-level fields before templating.
 type rawHeader struct {
-	Project  string            `yaml:"project"`
-	EnvFiles []string          `yaml:"envFiles"`
-	Versions map[string]string `yaml:"versions"`
+	Project    string            `yaml:"project"`
+	EnvFiles   []string          `yaml:"envFiles"`
+	Versions   map[string]string `yaml:"versions"`
+	BaseDomain map[string]string `yaml:"baseDomain"`
 }
 
 // LoadAndRender reads services.yaml, loads envFiles and user vars, and returns rendered YAML bytes
@@ -266,6 +267,7 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 		UserVars:    opts.UserVars,
 		EnvMap:      envMap,
 		Versions:    header.Versions,
+		BaseDomain:  header.BaseDomain,
 	}
 
 	rendered, err := executeTemplate(rawBytes, ctx)
