@@ -15,6 +15,10 @@ on:
         required: false
         type: string
         description: "Git ref of the consumer repository to deploy (branch/tag/SHA)"
+      code_root_base:
+        required: false
+        type: string
+        description: "Host path with synced sources for slot-based environments (used in hostPath mounts)"
       vars:
         required: false
         type: string
@@ -75,6 +79,7 @@ jobs:
           CODEX_GH_USERNAME: ${{ secrets.CODEX_GH_USERNAME }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
+          CODE_ROOT_BASE: ${{ inputs.code_root_base }}
         run: |
           set -euo pipefail
 

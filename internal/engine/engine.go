@@ -144,9 +144,6 @@ func applyNamespace(doc map[string]any, ns string) {
 		return
 	}
 	meta := getOrCreateMap(doc, "metadata")
-	if existing, ok := meta["namespace"].(string); ok && existing != "" {
-		return
-	}
 	meta["namespace"] = ns
 }
 

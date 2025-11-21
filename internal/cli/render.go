@@ -14,6 +14,8 @@ import (
 
 // newRenderCommand creates the "render" subcommand that renders manifests from services.yaml.
 func newRenderCommand(opts *Options) *cobra.Command {
+	var slot int
+
 	cmd := &cobra.Command{
 		Use:   "render",
 		Short: "Render Kubernetes manifests from services.yaml",
@@ -34,6 +36,7 @@ func newRenderCommand(opts *Options) *cobra.Command {
 			loadOpts := config.LoadOptions{
 				Env:       opts.Env,
 				Namespace: opts.Namespace,
+				Slot:      slot,
 				UserVars:  inlineVars,
 				VarFiles:  varFiles,
 			}
@@ -73,6 +76,7 @@ func newRenderCommand(opts *Options) *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to render (dev, staging, ai)")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Namespace override for rendered manifests")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number for slot-based environments (e.g. ai)")
 	cmd.Flags().StringP("output", "o", "", "Output directory for rendered manifests (if empty, prints to stdout)")
 	cmd.Flags().Bool("stdout", false, "Force output to stdout instead of files")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
