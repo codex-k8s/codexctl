@@ -119,18 +119,37 @@ func newApplyCommand(opts *Options) *cobra.Command {
 			}
 
 			logger.Info("applying manifests", "env", opts.Env, "namespace", ctxData.Namespace)
-			if err := kubeClient.Apply(ctx, manifests); err != nil {
+
+			applyOnce := func(ctx context.Context) error {
+				return kubeClient.Apply(ctx, manifests)
+			}
+
+			err = applyOnce(ctx)
+			if err != nil {
 				msg := err.Error()
+				// Ingress-nginx admission webhook might not be ready yet; do a bounded retry loop.
 				if strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") ||
 					strings.Contains(msg, "ingress-nginx-controller-admission") {
-					logger.Warn("apply failed due to ingress-nginx admission webhook; retrying once", "error", err)
-					select {
-					case <-ctx.Done():
-						return err
-					case <-time.After(10 * time.Second):
+					const maxRetries = 5
+					for attempt := 1; attempt <= maxRetries; attempt++ {
+						logger.Warn("apply failed due to ingress-nginx admission webhook; retrying", "attempt", attempt, "max", maxRetries, "error", err)
+						select {
+						case <-ctx.Done():
+							return err
+						case <-time.After(10 * time.Second):
+						}
+						err = applyOnce(ctx)
+						if err == nil {
+							break
+						}
+						msg = err.Error()
+						if !strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") &&
+							!strings.Contains(msg, "ingress-nginx-controller-admission") {
+							return err
+						}
 					}
-					if err2 := kubeClient.Apply(ctx, manifests); err2 != nil {
-						return err2
+					if err != nil {
+						return err
 					}
 				} else {
 					return err
