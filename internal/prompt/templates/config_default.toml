@@ -1,4 +1,4 @@
-model = "gpt-5"
+model = "gpt-5.1"
 model_reasoning_effort = "medium"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"

@@ -44,6 +44,11 @@ func NewLogger(w io.Writer, level Level) *slog.Logger {
 		w = os.Stderr
 	}
 
+	// Allow overriding log level via CODEX_LOG_LEVEL when present.
+	if lvlEnv := strings.TrimSpace(os.Getenv("CODEX_LOG_LEVEL")); lvlEnv != "" {
+		level = ParseLevel(lvlEnv)
+	}
+
 	handler := tint.NewHandler(w, &tint.Options{
 		Level: slog.Level(level),
 	})

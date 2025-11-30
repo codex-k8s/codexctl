@@ -163,3 +163,13 @@ codexctl images mirror --env staging
 ```
 
 This command reads `services.yaml`, and for each external image ensures that the `local` reference exists by pulling `from` and pushing it to the local registry if needed.***
+
+### CLI logging and debug mode
+
+`codexctl` uses a structured logger with levels. The default level is `info`, but you can override it via:
+
+```bash
+export CODEX_LOG_LEVEL=debug   # or info|warn|error
+```
+
+When set to `debug`, additional details are logged, such as previews of the rendered Codex config and prompt before they are uploaded into the Codex pod. At non-debug levels these `Debug` calls are suppressed by the logger configuration.***

@@ -152,6 +152,12 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			logger.Info("uploading Codex config into pod", "namespace", ns)
+			const maxConfigPreview = 512
+			configPreview := string(configBytes)
+			if len(configPreview) > maxConfigPreview {
+				configPreview = configPreview[:maxConfigPreview] + "...(truncated)"
+			}
+			logger.Debug("codex config preview", "config", configPreview)
 			if err := kubeClient.RunRaw(
 				ctxExec,
 				configBytes,
@@ -222,6 +228,12 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			logger.Info("uploading prompt into Codex pod", "namespace", ns)
+			const maxPromptPreview = 512
+			promptPreview := string(promptText)
+			if len(promptPreview) > maxPromptPreview {
+				promptPreview = promptPreview[:maxPromptPreview] + "...(truncated)"
+			}
+			logger.Debug("prompt preview", "prompt", promptPreview)
 			if err := kubeClient.RunRaw(
 				ctxExec,
 				promptText,
