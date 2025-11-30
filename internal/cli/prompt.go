@@ -152,7 +152,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			logger.Info("uploading Codex config into pod", "namespace", ns)
-			const maxConfigPreview = 512
+			const maxConfigPreview = 1024
 			configPreview := string(configBytes)
 			if len(configPreview) > maxConfigPreview {
 				configPreview = configPreview[:maxConfigPreview] + "...(truncated)"
@@ -228,7 +228,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			logger.Info("uploading prompt into Codex pod", "namespace", ns)
-			const maxPromptPreview = 512
+			const maxPromptPreview = 2048
 			promptPreview := string(promptText)
 			if len(promptPreview) > maxPromptPreview {
 				promptPreview = promptPreview[:maxPromptPreview] + "...(truncated)"
