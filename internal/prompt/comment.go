@@ -2,7 +2,6 @@ package prompt
 
 import (
 	"fmt"
-	"path"
 	"strings"
 	"text/template"
 
@@ -34,7 +33,7 @@ func RenderEnvComment(lang, host string, slot int, links []config.Link) (string,
 		}
 		renderedLinks = append(renderedLinks, link{
 			Title: title,
-			URL:   fmt.Sprintf("https://%s%s", host, path.Clean(p)),
+			URL:   fmt.Sprintf("https://%s%s", host, p),
 		})
 	}
 
