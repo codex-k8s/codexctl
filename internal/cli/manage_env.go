@@ -274,15 +274,6 @@ func newManageEnvGCCommand(opts *Options) *cobra.Command {
 
 // syncSources copies files from source to target using rsync (if available) or simple copy.
 func syncSources(source, target string) error {
-	// Always start with a clean target directory to avoid permission issues
-	// and leftover files from previous runs (e.g. stale .git/objects).
-	if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("cleanup target dir %q: %w", target, err)
-	}
-	if err := os.MkdirAll(target, 0o755); err != nil {
-		return fmt.Errorf("create target dir %q: %w", target, err)
-	}
-
 	// Ensure trailing slash for rsync semantics
 	src := source
 	if !strings.HasSuffix(src, string(os.PathSeparator)) {
@@ -509,6 +500,14 @@ func newManageEnvSyncCodeCommand(opts *Options) *cobra.Command {
 			}
 
 			target := fmt.Sprintf("%s/%d/src", strings.TrimSuffix(codeRootBase, "/"), slot)
+			if namespace == "" {
+				if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("cleanup target dir %q: %w", target, err)
+				}
+				if err := os.MkdirAll(target, 0o755); err != nil {
+					return fmt.Errorf("create target dir %q: %w", target, err)
+				}
+			}
 			if err := syncSources(source, target); err != nil {
 				return err
 			}
