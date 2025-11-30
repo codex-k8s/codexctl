@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -248,6 +249,30 @@ func buildSingleImage(ctx context.Context, logger *slog.Logger, name string, img
 	if dockerfile != "" {
 		args = append(args, "-f", dockerfile)
 	}
+
+	// Build arguments (templated).
+	for key, raw := range img.BuildArgs {
+		rendered, err := config.RenderTemplate("image-build-arg-"+name+"-"+key, []byte(raw), tmplCtx)
+		if err != nil {
+			return fmt.Errorf("render buildArg %q for image %q: %w", key, name, err)
+		}
+		value := strings.TrimSpace(string(rendered))
+		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", key, value))
+	}
+
+	// Build contexts (templated, path may be relative to project root).
+	for key, raw := range img.BuildContexts {
+		rendered, err := config.RenderTemplate("image-build-context-"+name+"-"+key, []byte(raw), tmplCtx)
+		if err != nil {
+			return fmt.Errorf("render buildContext %q for image %q: %w", key, name, err)
+		}
+		path := strings.TrimSpace(string(rendered))
+		if path != "" && !filepath.IsAbs(path) && tmplCtx.ProjectRoot != "" {
+			path = filepath.Join(tmplCtx.ProjectRoot, path)
+		}
+		args = append(args, "--build-context", fmt.Sprintf("%s=%s", key, path))
+	}
+
 	args = append(args, contextPath)
 
 	if err := runLogged(ctx, logger, "docker", args...); err != nil {

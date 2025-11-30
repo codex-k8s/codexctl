@@ -121,6 +121,10 @@ type ImageSpec struct {
 	Dockerfile string `yaml:"dockerfile,omitempty"`
 	// Context is an optional build context path (relative to project root) for build images.
 	Context string `yaml:"context,omitempty"`
+	// BuildArgs defines additional docker build arguments (key -> value template).
+	BuildArgs map[string]string `yaml:"buildArgs,omitempty"`
+	// BuildContexts defines additional docker build contexts (name -> path template).
+	BuildContexts map[string]string `yaml:"buildContexts,omitempty"`
 }
 
 // InfraItem groups infrastructure manifests applied before services.
