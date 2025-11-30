@@ -83,6 +83,8 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			if slot <= 0 {
 				return fmt.Errorf("slot must be a positive integer")
 			}
+			// Expose slot both via template context and as SLOT env-style variable for templates.
+			inlineVars["SLOT"] = fmt.Sprintf("%d", slot)
 
 			envName := opts.Env
 			if envName == "" {
@@ -232,9 +234,11 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			resume, _ := cmd.Flags().GetBool("resume")
-			execArgs := "npx -y @openai/codex exec \"$(cat /tmp/codex_prompt.txt)\" --json"
+			execCmd := "PROMPT_B64=$(base64 -w0 /tmp/codex_prompt.txt); " +
+				"PROMPT=$(printf %s \"$PROMPT_B64\" | base64 -d); " +
+				"cd /workspace && npx -y @openai/codex exec \"$PROMPT\" --json"
 			if resume {
-				execArgs = execArgs + " resume --last"
+				execCmd = execCmd + " resume --last"
 			}
 
 			logger.Info("starting Codex execution", "namespace", ns, "slot", slot, "kind", kind)
@@ -244,7 +248,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				"-n", ns,
 				"exec", "deploy/codex",
 				"--", "sh", "-lc",
-				"cd /workspace && "+execArgs,
+				execCmd,
 			); err != nil {
 				return fmt.Errorf("run Codex exec inside pod: %w", err)
 			}
