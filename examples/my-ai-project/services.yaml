@@ -23,10 +23,6 @@ environments:
     kubeconfig: "~/.kube/my-ai-project-work"
     context: "my-ai-project-work"
     imagePullPolicy: IfNotPresent
-    localRegistry:
-      enabled: true
-      name: "my-ai-registry"
-      port: 32000
   staging:
     kubeconfig: "~/.kube/my-ai-project-staging.yaml"
     context: "my-ai-project-staging"
@@ -89,18 +85,6 @@ services:
             mountPath: "/app"
 
 hooks:
-  beforeAll:
-    - name: ensure-local-registry
-      run: |
-        if command -v docker >/dev/null 2>&1; then
-          if ! docker ps --format '{{"{{"}}.Names{{"}}"}}' | grep -q '^my-ai-registry$'; then
-            if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q '^my-ai-registry$'; then
-              docker start my-ai-registry >/dev/null 2>&1 || true
-            else
-              docker run -d -p 32000:5000 --restart=always --name my-ai-registry registry:2 >/dev/null 2>&1 || true
-            fi
-          fi
-        fi
   afterAll:
     - name: announce-env-ready
       run: "echo 'Environment {{ .Env }} in namespace {{ .Namespace }} is ready (slot={{ .Slot }}).'"

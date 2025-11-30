@@ -47,6 +47,12 @@ maxSlots: 0
 
 registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 
+images:
+  busybox:
+    type: external
+    from: 'docker.io/library/busybox:1.37.0'
+    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/busybox:1.37.0'
+
 baseDomain:
   dev:     "dev.my-ai-project.com"
   staging: "staging.my-ai-project.com"
@@ -107,3 +113,53 @@ codex:
 - каждый проект свободен выбирать свои паттерны namespace’ов, доменов, стратегий тегирования образов и dev‑слотов.
 
 На раннере должен быть установлен `go` и `kubectl`, а также настроен доступ к нужным Kubernetes‑кластерам.
+
+### Хранилище образов в MicroK8s
+
+Если кластер поднят на MicroK8s, удобно использовать встроенный registry:
+
+- Включите registry на узле кластера:
+
+  ```bash
+  microk8s enable registry
+  microk8s status --wait-ready
+  ```
+
+- Настройте проект на использование этого registry (по умолчанию он слушает `localhost:32000`):
+
+  ```yaml
+  registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
+
+  services:
+    - name: my-service
+      image:
+        repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-project/my-service'
+  ```
+
+- Залогиньтесь в Docker Hub на раннере, чтобы не упираться в лимиты при скачивании базовых образов:
+
+  ```bash
+  docker login docker.io
+  ```
+
+  Эти креденшелы будут использованы при `docker build`, когда в hook’ах `services.yaml` подтягиваются большие базовые образы (Python, Go, Node и т.п.).
+
+В такой конфигурации `codexctl` собирает образы локально (через Docker) и пушит их в registry MicroK8s, заданный через `REGISTRY_HOST` / `registry` в `services.yaml`.
+
+- Настройте Docker на раннере так, чтобы registry MicroK8s считался «insecure registry» (чтобы `docker pull/push localhost:32000/...` не падали из‑за TLS). Обычно это делается через `/etc/docker/daemon.json`:
+
+  ```json
+  {
+    "insecure-registries": ["localhost:32000"]
+  }
+  ```
+
+  После правки перезапустите демон Docker (например, `sudo systemctl restart docker`). В нашем случае это безопасно, так как registry доступен только локально на CI‑раннере.
+
+Чтобы заранее залить во встроенный registry внешние базовые образы (описанные в блоке `images` с `type: external`), можно вызвать:
+
+```bash
+codexctl images mirror --env staging
+```
+
+Команда читает `services.yaml` и для каждого внешнего образа проверяет наличие `local`‑тэга в registry; если его нет — делает `docker pull` из `from` и `docker push` в локальный реестр.***

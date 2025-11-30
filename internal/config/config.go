@@ -24,6 +24,7 @@ type StackConfig struct {
 	Namespace      *NamespaceBlock        `yaml:"namespace,omitempty"`
 	MaxSlots       int                    `yaml:"maxSlots,omitempty"`
 	Registry       string                 `yaml:"registry,omitempty"`
+	Images         map[string]ImageSpec   `yaml:"images,omitempty"`
 	BaseDomain     map[string]string      `yaml:"baseDomain,omitempty"`
 	Environments   map[string]Environment `yaml:"environments,omitempty"`
 	Infrastructure []InfraItem            `yaml:"infrastructure,omitempty"`
@@ -95,6 +96,31 @@ type LocalRegistrySpec struct {
 	Enabled bool   `yaml:"enabled"`
 	Name    string `yaml:"name,omitempty"`
 	Port    int    `yaml:"port,omitempty"`
+}
+
+// ImageSpec describes an image declared in the top-level images block.
+// It is intended for shared metadata such as mirroring external images into a local registry.
+type ImageSpec struct {
+	// Type describes the image kind, e.g. "external" (pulled from a remote registry)
+	// or "build" (built from a Dockerfile).
+	Type string `yaml:"type,omitempty"`
+	// From is the full remote image reference for external images
+	// (e.g. "docker.io/library/busybox:1.37.0").
+	From string `yaml:"from,omitempty"`
+	// Local is the full local image reference in the development registry
+	// (e.g. "localhost:32000/library/busybox:1.37.0").
+	Local string `yaml:"local,omitempty"`
+	// Repository is the base image repository (e.g. "localhost:32000/alimentor/django-backend")
+	// used primarily for build images.
+	Repository string `yaml:"repository,omitempty"`
+	// Tag is an optional explicit tag string for build images when templating is not needed.
+	Tag string `yaml:"tag,omitempty"`
+	// TagTemplate is an optional Go-template string for computing a tag based on the template context.
+	TagTemplate string `yaml:"tagTemplate,omitempty"`
+	// Dockerfile is an optional path to a Dockerfile (relative to project root) for build images.
+	Dockerfile string `yaml:"dockerfile,omitempty"`
+	// Context is an optional build context path (relative to project root) for build images.
+	Context string `yaml:"context,omitempty"`
 }
 
 // InfraItem groups infrastructure manifests applied before services.

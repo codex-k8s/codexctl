@@ -47,6 +47,12 @@ maxSlots: 0
 
 registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 
+images:
+  busybox:
+    type: external
+    from: 'docker.io/library/busybox:1.37.0'
+    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/busybox:1.37.0'
+
 baseDomain:
   dev:     "dev.my-ai-project.com"
   staging: "staging.my-ai-project.com"
@@ -107,3 +113,53 @@ The actual `services.yaml` schema will evolve, but even this small sample illust
 - each project is free to define its own namespaces, domains, image tagging strategies and slot patterns.
 
 The runner should have `go` and `kubectl` installed, as well as access configured to the required Kubernetes clusters.
+
+### Image storage with MicroK8s
+
+When running against a MicroK8s cluster, a practical setup is:
+
+  - Enable the built-in container registry on the cluster node:
+
+  ```bash
+  microk8s enable registry
+  microk8s status --wait-ready
+  ```
+
+  - Configure your project to push images to that registry (which listens on `localhost:32000` by default), for example:
+
+  ```yaml
+  registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
+
+  services:
+    - name: my-service
+      image:
+        repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/my-project/my-service'
+  ```
+
+  - Ensure the runner can pull base images from Docker Hub without rate limits:
+
+  ```bash
+  docker login docker.io
+  ```
+
+  The stored credentials will be used when `docker build` pulls large upstream images (e.g. Python, Go, Node base images) during hooks defined in `services.yaml`.
+
+ In this model `codexctl` builds images locally (using Docker) and pushes them to the MicroK8s registry endpoint configured via `REGISTRY_HOST` / `registry` in `services.yaml`.
+
+- Configure Docker on the runner to treat the MicroK8s registry as an insecure registry (so that `docker pull/push localhost:32000/...` works without TLS errors). On a typical Linux host this can be done via `/etc/docker/daemon.json`:
+
+  ```json
+  {
+    "insecure-registries": ["localhost:32000"]
+  }
+  ```
+
+  After changing the file, restart the Docker daemon (for example, `sudo systemctl restart docker`). This is safe in this context because the registry is only reachable locally on the CI runner.
+
+To pre-populate the local registry with external base images (declared in the `images` block with `type: external`), you can run:
+
+```bash
+codexctl images mirror --env staging
+```
+
+This command reads `services.yaml`, and for each external image ensures that the `local` reference exists by pulling `from` and pushing it to the local registry if needed.***
