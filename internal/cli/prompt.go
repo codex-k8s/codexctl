@@ -163,7 +163,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				ctxExec,
 				configBytes,
 				"-n", ns,
-				"exec", "deploy/codex",
+				"exec", "-i", "deploy/codex",
 				"--", "sh", "-lc",
 				"mkdir -p ~/.codex && cat > ~/.codex/config.toml",
 			); err != nil {
@@ -238,7 +238,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				ctxExec,
 				promptText,
 				"-n", ns,
-				"exec", "deploy/codex",
+				"exec", "-i", "deploy/codex",
 				"--", "sh", "-lc",
 				"cat > /tmp/codex_prompt.txt",
 			); err != nil {
