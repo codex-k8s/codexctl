@@ -301,11 +301,7 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 		BaseDomain:  header.BaseDomain,
 	}
 
-	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Project != "" && ctx.Env != "" {
-		ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
-	}
-
-	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Project != "" && ctx.Env != "" {
+	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Project != "" && ctx.Env != "" && ctx.Env != "ai" {
 		ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
 	}
 
