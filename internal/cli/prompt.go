@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -228,12 +229,11 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			logger.Info("uploading prompt into Codex pod", "namespace", ns)
-			const maxPromptPreview = 2048
-			promptPreview := string(promptText)
-			if len(promptPreview) > maxPromptPreview {
-				promptPreview = promptPreview[:maxPromptPreview] + "...(truncated)"
+			logger.Debug("prompt stats", "length_bytes", len(promptText))
+			lines := strings.Split(string(promptText), "\n")
+			for i, line := range lines {
+				logger.Debug("prompt line", "index", i, "text", line)
 			}
-			logger.Debug("prompt preview", "prompt", promptPreview)
 			if err := kubeClient.RunRaw(
 				ctxExec,
 				promptText,
@@ -246,8 +246,11 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			resume, _ := cmd.Flags().GetBool("resume")
-			execCmd := "PROMPT_B64=$(base64 -w0 /tmp/codex_prompt.txt); " +
+			execCmd := "" +
+				"if [ ! -s /tmp/codex_prompt.txt ]; then echo 'error: /tmp/codex_prompt.txt is empty' >&2; exit 1; fi; " +
+				"PROMPT_B64=$(base64 -w0 /tmp/codex_prompt.txt); " +
 				"PROMPT=$(printf %s \"$PROMPT_B64\" | base64 -d); " +
+				"echo \"debug: prompt length bytes=${#PROMPT}\" >&2; " +
 				"cd /workspace && npx -y @openai/codex exec \"$PROMPT\" --json"
 			if resume {
 				execCmd = execCmd + " resume --last"
