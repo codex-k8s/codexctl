@@ -130,7 +130,7 @@ func newApplyCommand(opts *Options) *cobra.Command {
 				// Ingress-nginx admission webhook might not be ready yet; do a bounded retry loop.
 				if strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") ||
 					strings.Contains(msg, "ingress-nginx-controller-admission") {
-					const maxRetries = 5
+					const maxRetries = 18
 					for attempt := 1; attempt <= maxRetries; attempt++ {
 						logger.Warn("apply failed due to ingress-nginx admission webhook; retrying", "attempt", attempt, "max", maxRetries, "error", err)
 						select {

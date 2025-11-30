@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,7 +110,8 @@ func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) e
 
 	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	var stderr bytes.Buffer
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
 
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
@@ -120,8 +122,10 @@ func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) e
 		env = append(env, "KUBECONFIG="+c.Kubeconfig)
 		cmd.Env = env
 	}
-
 	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return fmt.Errorf("kubectl %v failed: %w; stderr: %s", args, err, stderr.String())
+		}
 		return fmt.Errorf("kubectl %v failed: %w", args, err)
 	}
 	return nil
