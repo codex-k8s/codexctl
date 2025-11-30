@@ -251,7 +251,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				"PROMPT_B64=$(base64 -w0 /tmp/codex_prompt.txt); " +
 				"PROMPT=$(printf %s \"$PROMPT_B64\" | base64 -d); " +
 				"echo \"debug: prompt length bytes=${#PROMPT}\" >&2; " +
-				"cd /workspace && npx -y @openai/codex exec \"$PROMPT\" --json"
+				"npx -y @openai/codex exec \"$PROMPT\" --cd /workspace --json"
 			if resume {
 				execCmd = execCmd + " resume --last"
 			}
