@@ -71,6 +71,8 @@ func newRootCommand(opts *Options, logger *slog.Logger) *cobra.Command {
 		newStatusCommand(opts),
 		newManageEnvCommand(opts),
 		newPromptCommand(opts),
+		newPlanCommand(opts),
+		newPRCommand(opts),
 		newDoctorCommand(opts),
 	)
 
