@@ -329,6 +329,7 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 			}
 
 			var rec state.EnvRecord
+			created := false
 			if found != nil {
 				rec = *found
 			} else {
@@ -339,6 +340,23 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				rec, err = allocateSlotWithRetry(ctxAlloc, store, stackCfgBase, ctxBase, envName, maxSlots, prefer, issue, pr, logger)
 				if err != nil {
 					return err
+				}
+				created = true
+			}
+
+			recreated := false
+			if !created && strings.TrimSpace(rec.Namespace) != "" {
+				ctxNs, cancelNs := context.WithTimeout(cmd.Context(), 15*time.Second)
+				defer cancelNs()
+				nsArgs := []string{"get", "ns", rec.Namespace}
+				if err := kubeClient.RunRaw(ctxNs, nil, nsArgs...); err != nil {
+					logger.Warn("namespace missing for existing environment; resources will be recreated",
+						"namespace", rec.Namespace,
+						"slot", rec.Slot,
+						"env", rec.Env,
+						"error", err,
+					)
+					recreated = true
 				}
 			}
 
@@ -399,11 +417,15 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 					Slot      int    `json:"slot"`
 					Namespace string `json:"namespace"`
 					Env       string `json:"env"`
+					Created   bool   `json:"created,omitempty"`
+					Recreated bool   `json:"recreated,omitempty"`
 				}
 				payload, _ := json.Marshal(out{
 					Slot:      rec.Slot,
 					Namespace: rec.Namespace,
 					Env:       rec.Env,
+					Created:   created,
+					Recreated: recreated,
 				})
 				fmt.Println(string(payload))
 				return nil
@@ -413,6 +435,8 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				"slot", rec.Slot,
 				"namespace", rec.Namespace,
 				"env", rec.Env,
+				"created", created,
+				"recreated", recreated,
 			)
 			return nil
 		},

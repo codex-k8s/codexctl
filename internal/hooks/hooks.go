@@ -109,7 +109,10 @@ func (e *Executor) runShell(ctx context.Context, step config.HookStep, stepCtx S
 		return nil
 	}
 
-	e.logger.Info("running hook shell step", "step", step.Name, "command", cmdText)
+	// Log only the hook step name at info level to avoid noisy multi-line command output.
+	// Full command text is available at debug level if needed for troubleshooting.
+	e.logger.Info("running hook shell step", "step", step.Name)
+	e.logger.Debug("hook shell command", "step", step.Name, "command", cmdText)
 
 	cmd := exec.CommandContext(ctx, "bash", "-lc", cmdText)
 	cmd.Stdout = os.Stdout
