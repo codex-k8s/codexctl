@@ -209,7 +209,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			switch kind {
 			case "":
 				kind = prompt.PromptKindDevIssue
-			case prompt.PromptKindDevIssue, prompt.PromptKindReviewFix, prompt.PromptKindPlanIssue, prompt.PromptKindPlanReview:
+			case prompt.PromptKindDevIssue, prompt.PromptKindReviewFix, prompt.PromptKindPlanIssue, prompt.PromptKindPlanReview, prompt.PromptKindPlanReviewRecreate:
 				// valid
 			default:
 				return fmt.Errorf("unknown prompt kind %q", kind)

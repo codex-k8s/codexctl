@@ -38,6 +38,14 @@ Core tools you can use:
 - Additional project-specific tools: {{ join .Codex.ExtraTools ", " }}
 {{- end }}
 
+{{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
+
+Additional up-to-date information source:
+- You have the Context7 MCP server configured.
+- When choosing libraries or using external dependencies and tools, first consult the latest documentation via Context7, then apply it in the code.
+- For any non-trivial APIs, SDKs, CLI tools and libraries, especially when there are no clear examples in the repo, query Context7 first and only then implement your solution.
+{{- end }}
+
 Current task (issue-based work):
 - Read the requirements in `./AGENTS.md`.
 - The repository slug is available in `GITHUB_REPOSITORY` (for example, `owner/repo`).

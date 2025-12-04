@@ -45,6 +45,14 @@ Core tools you can use:
 - Additional project-specific tools: {{ join .Codex.ExtraTools ", " }}
 {{- end }}
 
+{{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
+
+Additional up-to-date information source:
+- You have the Context7 MCP server configured.
+- When your plan touches specific libraries, frameworks, external services or tools, first look up their current documentation via Context7.
+- If the plan assumes new dependencies or advanced features of third-party libraries, always cross-check them with Context7 instead of relying on outdated knowledge.
+{{- end }}
+
 Source Issue for planning:
 - Read the requirements in `./AGENTS.md` and core documentation in `docs/*.md`.
 - The repository slug is available in `GITHUB_REPOSITORY` (for example, `owner/repo`).
@@ -93,4 +101,3 @@ If requirements are insufficient:
 
 Start working now. Build a coherent, implementable work plan for the source Issue, materialize it as sub-Issues plus a summary comment,
 without modifying code or infrastructure.
-

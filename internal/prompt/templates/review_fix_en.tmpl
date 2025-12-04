@@ -40,6 +40,14 @@ Core tools you can use:
 - Additional project-specific tools: {{ join .Codex.ExtraTools ", " }}
 {{- end }}
 
+{{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
+
+Additional up-to-date information source:
+- You have the Context7 MCP server configured.
+- When addressing review feedback that involves new libraries, tools or rarely used APIs, first consult current documentation via Context7.
+- For non-trivial changes, favour recommended, non-deprecated practices from the docs obtained through Context7 before modifying the code.
+{{- end }}
+
 PR and review context:
 - The repository slug is available via `GITHUB_REPOSITORY` (for example, `owner/repo`).
 - The PR number is passed in `PR_NUMBER`.

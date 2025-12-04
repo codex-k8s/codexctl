@@ -22,6 +22,14 @@ Environment context:
 - Source planning Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
 - Focus Issue with the comment (FOCUS_ISSUE_NUMBER): {{ envOr "FOCUS_ISSUE_NUMBER" "" }}
 
+{{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
+
+Additional up-to-date information source:
+- You have the Context7 MCP server configured.
+- When refining or adjusting the plan and it involves specific libraries, frameworks, external services or tools, look up their current documentation via Context7.
+- Use Context7 to validate technical decisions in the updated plan and avoid relying on deprecated APIs or practices.
+{{- end }}
+
 Note:
 - The current Codex session is resumed (`resume`) — you may have internal context from previous runs.
 - Nevertheless, you MUST explicitly refresh context via GitHub (gh) and not rely solely on session memory.
@@ -82,4 +90,3 @@ If the clarifications conflict with the previously agreed plan:
 
 Start working. Update the work plan according to the new comment, adjust sub-task Issues and provide a clear report,
 strictly respecting the constraint: no code or infrastructure changes, only Issue management and planning.
-
