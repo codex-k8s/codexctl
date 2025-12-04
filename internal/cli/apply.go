@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -56,141 +57,12 @@ func newApplyCommand(opts *Options) *cobra.Command {
 				return err
 			}
 
-			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-
-			// Ensure target namespace exists before running hooks or applying manifests.
-			if ns := strings.TrimSpace(ctxData.Namespace); ns != "" {
-				nsCtx, cancelNS := context.WithTimeout(cmd.Context(), 2*time.Minute)
-				defer cancelNS()
-				if err := kubeClient.RunRaw(nsCtx, nil, "get", "ns", ns); err != nil {
-					logger.Info("creating namespace before apply", "env", opts.Env, "namespace", ns)
-					_ = kubeClient.RunRaw(nsCtx, nil, "create", "ns", ns)
-				}
-			}
-
-			eng := engine.NewEngine()
-			manifests, err := eng.RenderStack(stackCfg, ctxData)
-			if err != nil {
-				return err
-			}
-
-			hookExec := hooks.NewExecutor(logger)
-			hookCtx := hooks.StepContext{
-				Stack:      stackCfg,
-				Template:   ctxData,
-				EnvName:    opts.Env,
-				KubeClient: kubeClient,
-			}
-
+			preflight, _ := cmd.Flags().GetBool("preflight")
+			wait, _ := cmd.Flags().GetBool("wait")
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
 			defer cancel()
 
-			preflight, _ := cmd.Flags().GetBool("preflight")
-			if preflight {
-				logger.Info("running preflight checks before apply", "env", opts.Env)
-				if err := hookExec.RunPreflightBasic(ctx); err != nil {
-					return err
-				}
-				if err := runDoctorChecks(ctx, logger, stackCfg, ctxData, envCfg, opts.Env); err != nil {
-					return err
-				}
-			}
-
-			// Stack-level and infrastructure/service hooks before apply.
-			if err := hookExec.RunSteps(ctx, stackCfg.Hooks.BeforeAll, hookCtx); err != nil {
-				return err
-			}
-			for _, infra := range stackCfg.Infrastructure {
-				if err := hookExec.RunSteps(ctx, infra.Hooks.BeforeApply, hookCtx); err != nil {
-					return err
-				}
-			}
-			for _, svc := range stackCfg.Services {
-				enabled, err := serviceEnabled(svc, ctxData)
-				if err != nil {
-					return err
-				}
-				if !enabled {
-					continue
-				}
-				if err := hookExec.RunSteps(ctx, svc.Hooks.BeforeApply, hookCtx); err != nil {
-					return err
-				}
-			}
-
-			logger.Info("applying manifests", "env", opts.Env, "namespace", ctxData.Namespace)
-
-			applyOnce := func(ctx context.Context) error {
-				return kubeClient.Apply(ctx, manifests)
-			}
-
-			err = applyOnce(ctx)
-			if err != nil {
-				msg := err.Error()
-				// Ingress-nginx admission webhook might not be ready yet; do a bounded retry loop.
-				if strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") ||
-					strings.Contains(msg, "ingress-nginx-controller-admission") {
-					const maxRetries = 18
-					for attempt := 1; attempt <= maxRetries; attempt++ {
-						logger.Warn("apply failed due to ingress-nginx admission webhook; retrying", "attempt", attempt, "max", maxRetries, "error", err)
-						select {
-						case <-ctx.Done():
-							return err
-						case <-time.After(10 * time.Second):
-						}
-						err = applyOnce(ctx)
-						if err == nil {
-							break
-						}
-						msg = err.Error()
-						if !strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") &&
-							!strings.Contains(msg, "ingress-nginx-controller-admission") {
-							return err
-						}
-					}
-					if err != nil {
-						return err
-					}
-				} else {
-					return err
-				}
-			}
-
-			// Infrastructure/service hooks and stack-level hooks after apply.
-			for _, infra := range stackCfg.Infrastructure {
-				if err := hookExec.RunSteps(ctx, infra.Hooks.AfterApply, hookCtx); err != nil {
-					return err
-				}
-			}
-			for _, svc := range stackCfg.Services {
-				enabled, err := serviceEnabled(svc, ctxData)
-				if err != nil {
-					return err
-				}
-				if !enabled {
-					continue
-				}
-				if err := hookExec.RunSteps(ctx, svc.Hooks.AfterApply, hookCtx); err != nil {
-					return err
-				}
-			}
-			if err := hookExec.RunSteps(ctx, stackCfg.Hooks.AfterAll, hookCtx); err != nil {
-				return err
-			}
-
-			wait, _ := cmd.Flags().GetBool("wait")
-			if wait {
-				if ctxData.Namespace == "" {
-					logger.Info("skip wait: namespace is empty, resources may be cluster-scoped or namespaced explicitly in manifests")
-				} else {
-					logger.Info("waiting for deployments to become Available", "namespace", ctxData.Namespace)
-					if err := kubeClient.WaitForDeployments(ctx, ctxData.Namespace, "300s"); err != nil {
-						return err
-					}
-				}
-			}
-
-			return nil
+			return applyStack(ctx, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, wait)
 		},
 	}
 
@@ -204,4 +76,148 @@ func newApplyCommand(opts *Options) *cobra.Command {
 	_ = cmd.MarkFlagRequired("env")
 
 	return cmd
+}
+
+// applyStack runs the core apply logic shared between the "apply" command and
+// higher-level helpers such as "manage-env ensure-ready".
+func applyStack(
+	ctx context.Context,
+	logger *slog.Logger,
+	stackCfg *config.StackConfig,
+	ctxData config.TemplateContext,
+	envName string,
+	envCfg config.Environment,
+	preflight bool,
+	wait bool,
+) error {
+	kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+
+	// Ensure target namespace exists before running hooks or applying manifests.
+	if ns := strings.TrimSpace(ctxData.Namespace); ns != "" {
+		nsCtx, cancelNS := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancelNS()
+		if err := kubeClient.RunRaw(nsCtx, nil, "get", "ns", ns); err != nil {
+			logger.Info("creating namespace before apply", "env", envName, "namespace", ns)
+			_ = kubeClient.RunRaw(nsCtx, nil, "create", "ns", ns)
+		}
+	}
+
+	eng := engine.NewEngine()
+	manifests, err := eng.RenderStack(stackCfg, ctxData)
+	if err != nil {
+		return err
+	}
+
+	hookExec := hooks.NewExecutor(logger)
+	hookCtx := hooks.StepContext{
+		Stack:      stackCfg,
+		Template:   ctxData,
+		EnvName:    envName,
+		KubeClient: kubeClient,
+	}
+
+	if preflight {
+		logger.Info("running preflight checks before apply", "env", envName)
+		if err := hookExec.RunPreflightBasic(ctx); err != nil {
+			return err
+		}
+		if err := runDoctorChecks(ctx, logger, stackCfg, ctxData, envCfg, envName); err != nil {
+			return err
+		}
+	}
+
+	// Stack-level and infrastructure/service hooks before apply.
+	if err := hookExec.RunSteps(ctx, stackCfg.Hooks.BeforeAll, hookCtx); err != nil {
+		return err
+	}
+	for _, infra := range stackCfg.Infrastructure {
+		if err := hookExec.RunSteps(ctx, infra.Hooks.BeforeApply, hookCtx); err != nil {
+			return err
+		}
+	}
+	for _, svc := range stackCfg.Services {
+		enabled, err := serviceEnabled(svc, ctxData)
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			continue
+		}
+		if err := hookExec.RunSteps(ctx, svc.Hooks.BeforeApply, hookCtx); err != nil {
+			return err
+		}
+	}
+
+	logger.Info("applying manifests", "env", envName, "namespace", ctxData.Namespace)
+
+	applyOnce := func(ctx context.Context) error {
+		return kubeClient.Apply(ctx, manifests)
+	}
+
+	err = applyOnce(ctx)
+	if err != nil {
+		msg := err.Error()
+		// Ingress-nginx admission webhook might not be ready yet; do a bounded retry loop.
+		if strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") ||
+			strings.Contains(msg, "ingress-nginx-controller-admission") {
+			const maxRetries = 18
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				logger.Warn("apply failed due to ingress-nginx admission webhook; retrying", "attempt", attempt, "max", maxRetries, "error", err)
+				select {
+				case <-ctx.Done():
+					return err
+				case <-time.After(10 * time.Second):
+				}
+				err = applyOnce(ctx)
+				if err == nil {
+					break
+				}
+				msg = err.Error()
+				if !strings.Contains(msg, "validate.nginx.ingress.kubernetes.io") &&
+					!strings.Contains(msg, "ingress-nginx-controller-admission") {
+					return err
+				}
+			}
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
+	// Infrastructure/service hooks and stack-level hooks after apply.
+	for _, infra := range stackCfg.Infrastructure {
+		if err := hookExec.RunSteps(ctx, infra.Hooks.AfterApply, hookCtx); err != nil {
+			return err
+		}
+	}
+	for _, svc := range stackCfg.Services {
+		enabled, err := serviceEnabled(svc, ctxData)
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			continue
+		}
+		if err := hookExec.RunSteps(ctx, svc.Hooks.AfterApply, hookCtx); err != nil {
+			return err
+		}
+	}
+	if err := hookExec.RunSteps(ctx, stackCfg.Hooks.AfterAll, hookCtx); err != nil {
+		return err
+	}
+
+	if wait {
+		if ctxData.Namespace == "" {
+			logger.Info("skip wait: namespace is empty, resources may be cluster-scoped or namespaced explicitly in manifests")
+		} else {
+			logger.Info("waiting for deployments to become Available", "namespace", ctxData.Namespace)
+			if err := kubeClient.WaitForDeployments(ctx, ctxData.Namespace, "300s"); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

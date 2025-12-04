@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +31,9 @@ func newManageEnvCommand(opts *Options) *cobra.Command {
 
 	cmd.AddCommand(
 		newManageEnvCreateCommand(opts),
+		newManageEnvEnsureSlotCommand(opts),
+		newManageEnvEnsureReadyCommand(opts),
+		newManageEnvCleanupCommand(opts),
 		newManageEnvGCCommand(opts),
 		newManageEnvResolveCommand(opts),
 		newManageEnvSetCommand(opts),
@@ -91,44 +95,22 @@ func newManageEnvCreateCommand(opts *Options) *cobra.Command {
 			prNum, _ := cmd.Flags().GetInt("pr")
 			prefer, _ := cmd.Flags().GetInt("prefer")
 
-			// Block while waiting for a free slot: when all slots are busy, do not fail immediately,
-			// but retry allocation until a global timeout is reached.
-			const waitTimeout = 6 * time.Hour
-			const retryDelay = 30 * time.Second
-
-			ctx, cancel := context.WithTimeout(cmd.Context(), waitTimeout)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 6*time.Hour)
 			defer cancel()
 
-			for {
-				record, err := store.AllocateSlot(ctx, stackCfg, ctxData, envName, maxSlots, prefer, issueNum, prNum)
-				if err == nil {
-					logger.Info("slot allocated",
-						"slot", record.Slot,
-						"namespace", record.Namespace,
-						"env", record.Env,
-						"issue", record.Issue,
-						"pr", record.PR,
-					)
-					return nil
-				}
-
-				// If the error is not about lack of free slots, return immediately.
-				if !state.IsNoFreeSlotError(err) {
-					return err
-				}
-
-				logger.Info("no free slot available yet; waiting before retry",
-					"env", envName,
-					"maxSlots", maxSlots,
-					"retryDelay", retryDelay.String(),
-				)
-
-				select {
-				case <-ctx.Done():
-					return fmt.Errorf("timed out waiting for free slot (waited %s): %w", waitTimeout, ctx.Err())
-				case <-time.After(retryDelay):
-				}
+			record, err := allocateSlotWithRetry(ctx, store, stackCfg, ctxData, envName, maxSlots, prefer, issueNum, prNum, logger)
+			if err != nil {
+				return err
 			}
+
+			logger.Info("slot allocated",
+				"slot", record.Slot,
+				"namespace", record.Namespace,
+				"env", record.Env,
+				"issue", record.Issue,
+				"pr", record.PR,
+			)
+			return nil
 		},
 	}
 
@@ -139,6 +121,419 @@ func newManageEnvCreateCommand(opts *Options) *cobra.Command {
 	cmd.Flags().Int("prefer", 0, "Preferred slot number to reuse if available")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+
+	return cmd
+}
+
+// newManageEnvEnsureSlotCommand creates the "manage-env ensure-slot" subcommand that
+// returns an existing slot for a given selector (issue/pr/slot) or allocates a new one.
+func newManageEnvEnsureSlotCommand(opts *Options) *cobra.Command {
+	var issue, pr, slot, max int
+	var output string
+
+	cmd := &cobra.Command{
+		Use:   "ensure-slot",
+		Short: "Ensure a slot exists for the given selector (issue/pr/slot)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+
+			if issue <= 0 && pr <= 0 && slot <= 0 {
+				return fmt.Errorf("at least one of --issue, --pr or --slot must be specified")
+			}
+
+			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
+			if err != nil {
+				return err
+			}
+
+			varFile := cmd.Flag("var-file").Value.String()
+			varFiles := []string{}
+			if varFile != "" {
+				varFiles = append(varFiles, varFile)
+			}
+
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+
+			loadOpts := config.LoadOptions{
+				Env:      envName,
+				UserVars: inlineVars,
+				VarFiles: varFiles,
+			}
+
+			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			if err != nil {
+				return err
+			}
+
+			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
+			if err != nil {
+				return err
+			}
+
+			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+			store, err := state.NewStore(stackCfg, kubeClient, logger)
+			if err != nil {
+				return err
+			}
+
+			// Try to find an existing record first.
+			ctxList, cancelList := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancelList()
+
+			records, err := store.List(ctxList)
+			if err != nil {
+				return err
+			}
+
+			var found *state.EnvRecord
+			for i := range records {
+				rec := records[i]
+				if envName != "" && rec.Env != envName {
+					continue
+				}
+				if slot > 0 && rec.Slot != slot {
+					continue
+				}
+				if issue > 0 && rec.Issue != issue {
+					continue
+				}
+				if pr > 0 && rec.PR != pr {
+					continue
+				}
+				found = &rec
+				break
+			}
+
+			var rec state.EnvRecord
+			if found != nil {
+				rec = *found
+			} else {
+				prefer := slot
+				ctxAlloc, cancelAlloc := context.WithTimeout(cmd.Context(), 6*time.Hour)
+				defer cancelAlloc()
+
+				rec, err = allocateSlotWithRetry(ctxAlloc, store, stackCfg, ctxData, envName, max, prefer, issue, pr, logger)
+				if err != nil {
+					return err
+				}
+			}
+
+			return printResolveOutput(rec, output, logger)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment type (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Explicit slot number")
+	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number selector")
+	cmd.Flags().IntVar(&pr, "pr", 0, "PR number selector")
+	cmd.Flags().IntVar(&max, "max", 0, "Maximum number of slots (0 means unlimited)")
+	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
+	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
+	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+
+	return cmd
+}
+
+// newManageEnvEnsureReadyCommand creates the "manage-env ensure-ready" subcommand that
+// ensures a slot exists, syncs code, prepares images and applies manifests.
+func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
+	var (
+		issue         int
+		pr            int
+		slot          int
+		maxSlots      int
+		codeRootBase  string
+		source        string
+		prepareImages bool
+		doApply       bool
+		output        string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "ensure-ready",
+		Short: "Ensure an environment slot exists, code is synced and manifests are applied",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+
+			if issue <= 0 && pr <= 0 && slot <= 0 {
+				return fmt.Errorf("at least one of --issue, --pr or --slot must be specified")
+			}
+
+			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
+			if err != nil {
+				return err
+			}
+
+			varFile := cmd.Flag("var-file").Value.String()
+			varFiles := []string{}
+			if varFile != "" {
+				varFiles = append(varFiles, varFile)
+			}
+
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+
+			loadOptsBase := config.LoadOptions{
+				Env:      envName,
+				UserVars: inlineVars,
+				VarFiles: varFiles,
+			}
+
+			stackCfgBase, ctxBase, err := config.LoadStackConfig(opts.ConfigPath, loadOptsBase)
+			if err != nil {
+				return err
+			}
+
+			envCfg, err := config.ResolveEnvironment(stackCfgBase, envName)
+			if err != nil {
+				return err
+			}
+
+			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+			store, err := state.NewStore(stackCfgBase, kubeClient, logger)
+			if err != nil {
+				return err
+			}
+
+			// Ensure slot exists (reuse selector logic from ensure-slot).
+			ctxList, cancelList := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancelList()
+
+			records, err := store.List(ctxList)
+			if err != nil {
+				return err
+			}
+
+			var found *state.EnvRecord
+			for i := range records {
+				rec := records[i]
+				if envName != "" && rec.Env != envName {
+					continue
+				}
+				if slot > 0 && rec.Slot != slot {
+					continue
+				}
+				if issue > 0 && rec.Issue != issue {
+					continue
+				}
+				if pr > 0 && rec.PR != pr {
+					continue
+				}
+				found = &rec
+				break
+			}
+
+			var rec state.EnvRecord
+			if found != nil {
+				rec = *found
+			} else {
+				prefer := slot
+				ctxAlloc, cancelAlloc := context.WithTimeout(cmd.Context(), 6*time.Hour)
+				defer cancelAlloc()
+
+				rec, err = allocateSlotWithRetry(ctxAlloc, store, stackCfgBase, ctxBase, envName, maxSlots, prefer, issue, pr, logger)
+				if err != nil {
+					return err
+				}
+			}
+
+			// Optionally sync code into workspace.
+			if codeRootBase != "" && source != "" {
+				target := fmt.Sprintf("%s/%d/src", strings.TrimSuffix(codeRootBase, "/"), rec.Slot)
+				if err := syncSources(source, target); err != nil {
+					return fmt.Errorf("sync sources to %q: %w", target, err)
+				}
+				logger.Info("slot workspace synced (ensure-ready)",
+					"slot", rec.Slot,
+					"target", target,
+					"source", source,
+					"env", envName,
+					"namespace", rec.Namespace,
+				)
+			}
+
+			// Reload stack config for the concrete slot.
+			loadOptsSlot := config.LoadOptions{
+				Env:       envName,
+				Namespace: rec.Namespace,
+				Slot:      rec.Slot,
+				UserVars:  inlineVars,
+				VarFiles:  varFiles,
+			}
+
+			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOptsSlot)
+			if err != nil {
+				return err
+			}
+
+			// Optionally prepare images.
+			if prepareImages {
+				ctxImages, cancelImages := context.WithTimeout(cmd.Context(), 2*time.Hour)
+				defer cancelImages()
+
+				if err := mirrorExternalImages(ctxImages, logger, stackCfg); err != nil {
+					return err
+				}
+				if err := buildImages(ctxImages, logger, stackCfg, ctxData); err != nil {
+					return err
+				}
+			}
+
+			// Optionally apply manifests.
+			if doApply {
+				ctxApply, cancelApply := context.WithTimeout(cmd.Context(), 10*time.Minute)
+				defer cancelApply()
+
+				if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, envCfg, true, true); err != nil {
+					return err
+				}
+			}
+
+			if strings.ToLower(output) == "json" {
+				type out struct {
+					Slot      int    `json:"slot"`
+					Namespace string `json:"namespace"`
+					Env       string `json:"env"`
+				}
+				payload, _ := json.Marshal(out{
+					Slot:      rec.Slot,
+					Namespace: rec.Namespace,
+					Env:       rec.Env,
+				})
+				fmt.Println(string(payload))
+				return nil
+			}
+
+			logger.Info("environment ensured ready",
+				"slot", rec.Slot,
+				"namespace", rec.Namespace,
+				"env", rec.Env,
+			)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment type (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Explicit slot number")
+	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number selector")
+	cmd.Flags().IntVar(&pr, "pr", 0, "PR number selector")
+	cmd.Flags().IntVar(&maxSlots, "max", 0, "Maximum number of slots (0 means unlimited)")
+	cmd.Flags().StringVar(&codeRootBase, "code-root-base", os.Getenv("CODE_ROOT_BASE"), "Base path for slot workspaces")
+	cmd.Flags().StringVar(&source, "source", ".", "Source directory to sync")
+	cmd.Flags().BoolVar(&prepareImages, "prepare-images", false, "Mirror external and build local images before apply")
+	cmd.Flags().BoolVar(&doApply, "apply", false, "Apply manifests for the ensured environment")
+	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
+	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
+	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+
+	return cmd
+}
+
+// newManageEnvCleanupCommand creates the "manage-env cleanup" subcommand that destroys
+// an environment slot by selector and optionally removes its state configmap.
+func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
+	var (
+		issue         int
+		pr            int
+		slot          int
+		withConfigMap bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "cleanup",
+		Short: "Destroy an environment for the given selector and optionally remove its state",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+
+			if issue <= 0 && pr <= 0 && slot <= 0 {
+				return fmt.Errorf("at least one of --issue, --pr or --slot must be specified")
+			}
+
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+
+			// We first load stack config without slot/namespace to obtain state config
+			// and environment connection details.
+			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName})
+			if err != nil {
+				return err
+			}
+			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
+			if err != nil {
+				return err
+			}
+
+			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+			store, err := state.NewStore(stackCfg, kubeClient, logger)
+			if err != nil {
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
+			defer cancel()
+
+			records, err := store.List(ctx)
+			if err != nil {
+				return err
+			}
+
+			stateNS := stackCfg.State.ConfigMapNamespace
+
+			for _, rec := range records {
+				if envName != "" && rec.Env != envName {
+					continue
+				}
+				if slot > 0 && rec.Slot != slot {
+					continue
+				}
+				if issue > 0 && rec.Issue != issue {
+					continue
+				}
+				if pr > 0 && rec.PR != pr {
+					continue
+				}
+
+				logger.Info("destroying environment for selector", "slot", rec.Slot, "namespace", rec.Namespace, "env", rec.Env, "issue", rec.Issue, "pr", rec.PR)
+
+				// Load stack config for this particular slot/namespace.
+				loadOptsSlot := config.LoadOptions{
+					Env:       envName,
+					Namespace: rec.Namespace,
+					Slot:      rec.Slot,
+				}
+				stackSlot, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOptsSlot)
+				if err != nil {
+					return err
+				}
+
+				if err := destroyStack(ctx, logger, stackSlot, ctxData, envCfg, envName); err != nil {
+					return err
+				}
+
+				if withConfigMap && stateNS != "" && rec.ConfigName != "" {
+					_, _ = kubeClient.RunAndCapture(ctx, nil,
+						"-n", stateNS,
+						"delete", "configmap", rec.ConfigName, "--ignore-not-found",
+					)
+				}
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment type (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Explicit slot number")
+	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number selector")
+	cmd.Flags().IntVar(&pr, "pr", 0, "PR number selector")
+	cmd.Flags().BoolVar(&withConfigMap, "with-configmap", false, "Remove state ConfigMap for the selected environment")
 
 	return cmd
 }
@@ -587,4 +982,68 @@ func newManageEnvCommentCommand(opts *Options) *cobra.Command {
 	_ = cmd.MarkFlagRequired("slot")
 	cmd.Flags().StringVar(&lang, "lang", "en", "Language for the comment (en|ru)")
 	return cmd
+}
+
+// allocateSlotWithRetry encapsulates the common allocation loop for both "create"
+// and higher-level helpers that need to allocate a new slot.
+func allocateSlotWithRetry(
+	ctx context.Context,
+	store *state.Store,
+	stackCfg *config.StackConfig,
+	baseCtx config.TemplateContext,
+	envName string,
+	maxSlots int,
+	prefer int,
+	issue int,
+	pr int,
+	logger *slog.Logger,
+) (state.EnvRecord, error) {
+	const retryDelay = 30 * time.Second
+
+	for {
+		record, err := store.AllocateSlot(ctx, stackCfg, baseCtx, envName, maxSlots, prefer, issue, pr)
+		if err == nil {
+			return record, nil
+		}
+
+		// If the error is not about lack of free slots, return immediately.
+		if !state.IsNoFreeSlotError(err) {
+			return state.EnvRecord{}, err
+		}
+
+		logger.Info("no free slot available yet; waiting before retry",
+			"env", envName,
+			"maxSlots", maxSlots,
+			"retryDelay", retryDelay.String(),
+		)
+
+		select {
+		case <-ctx.Done():
+			return state.EnvRecord{}, fmt.Errorf("timed out waiting for free slot: %w", ctx.Err())
+		case <-time.After(retryDelay):
+		}
+	}
+}
+
+// printResolveOutput prints a slot resolution result in plain or JSON format.
+func printResolveOutput(rec state.EnvRecord, output string, logger *slog.Logger) error {
+	switch strings.ToLower(output) {
+	case "json":
+		type out struct {
+			Slot      int    `json:"slot"`
+			Namespace string `json:"namespace"`
+			Env       string `json:"env"`
+		}
+		payload, _ := json.Marshal(out{Slot: rec.Slot, Namespace: rec.Namespace, Env: rec.Env})
+		fmt.Println(string(payload))
+	default:
+		logger.Info("resolved slot",
+			"slot", rec.Slot,
+			"namespace", rec.Namespace,
+			"env", rec.Env,
+			"issue", rec.Issue,
+			"pr", rec.PR,
+		)
+	}
+	return nil
 }
