@@ -206,10 +206,14 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 
 			kind := cmd.Flag("kind").Value.String()
 			templatePath := cmd.Flag("template").Value.String()
-			if kind == "" && templatePath == "" {
+			switch kind {
+			case "":
 				kind = prompt.PromptKindDevIssue
+			case prompt.PromptKindDevIssue, prompt.PromptKindReviewFix, prompt.PromptKindPlanIssue, prompt.PromptKindPlanReview:
+				// valid
+			default:
+				return fmt.Errorf("unknown prompt kind %q", kind)
 			}
-
 			var promptText []byte
 			if kind != "" && templatePath == "" {
 				renderedPrompt, usedFallback, err := r.RenderBuiltinPrompt(kind, lang)

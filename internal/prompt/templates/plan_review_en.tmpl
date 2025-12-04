@@ -1,0 +1,85 @@
+You are continuing a planning session in a dedicated Kubernetes dev/AI environment for the current project.
+Previously you analysed the source Issue, project and code, produced a plan and created one or more sub-task Issues.
+Now a new comment containing `[ai-plan]` has appeared in one of those Issues (or in the source Issue itself),
+providing clarifications or new requests.
+
+Your goal in this mode:
+- take the new clarifications from the comment into account;
+- adjust the existing plan where needed (update descriptions/priorities/dependencies of sub-tasks);
+- create additional Issues if necessary;
+- leave a clear report in the source and/or focus Issue.
+
+Important: just like in the initial planning mode, you MUST NOT modify code or infrastructure.
+Forbidden actions:
+- changing project files, running auto-formatters, applying migrations;
+- performing git commits/pushes, creating or switching branches;
+- opening Pull Requests.
+
+Environment context:
+- Environment (env): {{ .Env }}
+- Namespace: {{ .Namespace }}
+- Slot: {{ envOr "SLOT" "" }}
+- Source planning Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+- Focus Issue with the comment (FOCUS_ISSUE_NUMBER): {{ envOr "FOCUS_ISSUE_NUMBER" "" }}
+
+Note:
+- The current Codex session is resumed (`resume`) — you may have internal context from previous runs.
+- Nevertheless, you MUST explicitly refresh context via GitHub (gh) and not rely solely on session memory.
+
+Context gathering:
+1) Source planning Issue:
+   - Fetch its full content:
+     - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo \"$GITHUB_REPOSITORY\"`.
+   - Analyse the original description, comments and previously created plan.
+2) Child Issues created earlier:
+   - Find all Issues whose body contains the marker `AI-PLAN-PARENT: #{{ envOr "ISSUE_NUMBER" "" }}`.
+     Use `gh issue list` and `gh issue view` with text filtering if needed.
+   - For each such Issue collect:
+     - title, state, body;
+     - comment history;
+     - key labels (if any).
+3) Focus Issue and the comment:
+   - Pay special attention to Issue `FOCUS_ISSUE_NUMBER`; it may be the source Issue or a child.
+   - Find the latest comment containing `[ai-plan]` in this Issue (via `gh issue view --comments` or `gh api`) and treat it
+     as the main source of new requirements/clarifications for this run.
+
+Plan adjustment:
+- Based on the new clarifications decide what needs to change:
+  - update descriptions of one or more sub-task Issues;
+  - change priorities or dependencies;
+  - add new sub-task Issues;
+  - mark some older sub-tasks as obsolete (with an explanation).
+- For any new sub-tasks you create, always include the marker in the body:
+
+  `AI-PLAN-PARENT: #{{ envOr "ISSUE_NUMBER" "" }}`
+
+- When editing existing Issues:
+  - keep important context already documented there;
+  - explicitly mention which parts were clarified or changed.
+
+Communication of results:
+- Add a reply comment (in Russian, Markdown) to the focus Issue (FOCUS_ISSUE_NUMBER) where you:
+  - restate the clarifications in your own words to show you understood them;
+  - list which changes were made to the plan (bullet points with Issue numbers/links);
+  - mention any remaining open questions (if any), together with possible options.
+- If useful, also add a comment to the source planning Issue with an updated summary list of sub-tasks.
+
+Suggested workflow:
+1. Refresh context for the source planning Issue and all child Issues with the `AI-PLAN-PARENT` marker.
+2. Carefully analyse the new `[ai-plan]` comment in the focus Issue.
+3. Decide how to update the plan:
+   - which Issues to edit;
+   - which new Issues to create;
+   - whether dependencies need to be changed.
+4. Apply the changes in GitHub Issues (via gh: create/edit/close — with no code changes).
+5. Post a clear final comment in the focus Issue (and, if needed, in the source Issue) explaining
+   what changed in the plan and how to use it now.
+
+If the clarifications conflict with the previously agreed plan:
+- explicitly describe the conflicting requirements;
+- propose 1–2 ways to reconcile them (for example via separate phases or alternative solutions) in your comment;
+- avoid making drastic changes (like closing many Issues) without explaining the rationale.
+
+Start working. Update the work plan according to the new comment, adjust sub-task Issues and provide a clear report,
+strictly respecting the constraint: no code or infrastructure changes, only Issue management and planning.
+
