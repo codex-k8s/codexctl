@@ -389,26 +389,46 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				return err
 			}
 
-			// Optionally prepare images.
+			// Optionally prepare images. For existing environments with a live namespace
+			// we skip heavy image work and only run it when the environment was just
+			// created or needs full recreation.
 			if prepareImages {
-				ctxImages, cancelImages := context.WithTimeout(cmd.Context(), 2*time.Hour)
-				defer cancelImages()
+				if created || recreated {
+					ctxImages, cancelImages := context.WithTimeout(cmd.Context(), 2*time.Hour)
+					defer cancelImages()
 
-				if err := mirrorExternalImages(ctxImages, logger, stackCfg); err != nil {
-					return err
-				}
-				if err := buildImages(ctxImages, logger, stackCfg, ctxData); err != nil {
-					return err
+					if err := mirrorExternalImages(ctxImages, logger, stackCfg); err != nil {
+						return err
+					}
+					if err := buildImages(ctxImages, logger, stackCfg, ctxData); err != nil {
+						return err
+					}
+				} else {
+					logger.Info("skipping image preparation for existing environment",
+						"slot", rec.Slot,
+						"namespace", rec.Namespace,
+						"env", rec.Env,
+					)
 				}
 			}
 
-			// Optionally apply manifests.
+			// Optionally apply manifests. Similar to image preparation, we only apply
+			// manifests for freshly created or recreated environments to avoid
+			// unnecessary redeploys and migrations on every ensure-ready call.
 			if doApply {
-				ctxApply, cancelApply := context.WithTimeout(cmd.Context(), 10*time.Minute)
-				defer cancelApply()
+				if created || recreated {
+					ctxApply, cancelApply := context.WithTimeout(cmd.Context(), 10*time.Minute)
+					defer cancelApply()
 
-				if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, envCfg, true, true); err != nil {
-					return err
+					if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, envCfg, true, true); err != nil {
+						return err
+					}
+				} else {
+					logger.Info("skipping apply for existing environment",
+						"slot", rec.Slot,
+						"namespace", rec.Namespace,
+						"env", rec.Env,
+					)
 				}
 			}
 
