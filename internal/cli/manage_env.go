@@ -703,6 +703,11 @@ func syncSources(source, target string) error {
 		tgt += string(os.PathSeparator)
 	}
 
+	// Ensure target directory hierarchy exists before syncing.
+	if err := os.MkdirAll(tgt, 0o755); err != nil {
+		return fmt.Errorf("create target dir %q: %w", tgt, err)
+	}
+
 	if _, err := exec.LookPath("rsync"); err == nil {
 		cmd := exec.Command("rsync", "-a", "--delete", "--no-perms", "--no-owner", "--no-group", src, tgt)
 		cmd.Stdout = os.Stdout
