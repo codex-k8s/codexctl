@@ -28,7 +28,7 @@ func newDestroyCommand(opts *Options) *cobra.Command {
 			}
 
 			varFile := cmd.Flag("var-file").Value.String()
-			varFiles := []string{}
+			var varFiles []string
 			if varFile != "" {
 				varFiles = append(varFiles, varFile)
 			}
