@@ -3,7 +3,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -91,9 +90,4 @@ func LoggerFromContext(ctx context.Context) *slog.Logger {
 		return l
 	}
 	return logging.NewLogger(os.Stderr, logging.LevelInfo)
-}
-
-// notImplemented returns an error indicating that the called command is not implemented yet.
-func notImplemented(cmd *cobra.Command, _ []string) error {
-	return fmt.Errorf("command %q is not implemented yet", cmd.CommandPath())
 }

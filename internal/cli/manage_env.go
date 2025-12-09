@@ -775,15 +775,6 @@ func fixWorkspacePermissions(ctx context.Context, client *kube.Client, namespace
 	return client.RunRaw(ctx, nil, cmdArgs...)
 }
 
-func renderEnvComment(host string, slot int, lang string) string {
-	switch lang {
-	case "ru":
-		return fmt.Sprintf("🧪 Завершён запуск Codex\n\n- Slot: %d\n- Host: https://%s\n- Explorer: https://%s/explorer\n- gRPC Swagger: https://%s/grpc/swagger/\n", slot, host, host, host)
-	default:
-		return fmt.Sprintf("🧪 Codex run completed\n\n- Slot: %d\n- Host: https://%s\n- Explorer: https://%s/explorer\n- gRPC Swagger: https://%s/grpc/swagger/\n", slot, host, host, host)
-	}
-}
-
 // newManageEnvResolveCommand creates "manage-env resolve" to find slot/namespace by slot/issue/pr.
 func newManageEnvResolveCommand(opts *Options) *cobra.Command {
 	var issue, pr, slot int
