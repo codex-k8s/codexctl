@@ -73,22 +73,14 @@ func newManageEnvCreateCommand(opts *Options) *cobra.Command {
 				UserVars: inlineVars,
 				VarFiles: varFiles,
 			}
-
-			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, loadOpts, logger)
 			if err != nil {
 				return err
 			}
 
-			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
-			if err != nil {
-				return err
-			}
-
-			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-			store, err := state.NewStore(stackCfg, kubeClient, logger)
-			if err != nil {
-				return err
-			}
+			stackCfg := envStore.stackCfg
+			ctxData := envStore.templateCtx
+			store := envStore.store
 
 			maxSlots, _ := cmd.Flags().GetInt("max")
 			issueNum, _ := cmd.Flags().GetInt("issue")
@@ -162,49 +154,18 @@ func newManageEnvEnsureSlotCommand(opts *Options) *cobra.Command {
 				UserVars: inlineVars,
 				VarFiles: varFiles,
 			}
+			ctxList, cancelList := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancelList()
 
-			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
-			if err != nil {
-				return err
-			}
-
-			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
-			if err != nil {
-				return err
-			}
-
-			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-			store, err := state.NewStore(stackCfg, kubeClient, logger)
+			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, loadOpts, logger)
 			if err != nil {
 				return err
 			}
 
 			// Try to find an existing record first.
-			ctxList, cancelList := context.WithTimeout(cmd.Context(), 30*time.Second)
-			defer cancelList()
-
-			records, err := store.List(ctxList)
+			found, err := findMatchingEnvRecord(ctxList, envStore.store, envName, slot, issue, pr)
 			if err != nil {
 				return err
-			}
-
-			var found *state.EnvRecord
-			for i := range records {
-				rec := records[i]
-				if envName != "" && rec.Env != envName {
-					continue
-				}
-				if slot > 0 && rec.Slot != slot {
-					continue
-				}
-				if issue > 0 && rec.Issue != issue {
-					continue
-				}
-				if pr > 0 && rec.PR != pr {
-					continue
-				}
-				found = &rec
-				break
 			}
 
 			var rec state.EnvRecord
@@ -215,7 +176,7 @@ func newManageEnvEnsureSlotCommand(opts *Options) *cobra.Command {
 				ctxAlloc, cancelAlloc := context.WithTimeout(cmd.Context(), 6*time.Hour)
 				defer cancelAlloc()
 
-				rec, err = allocateSlotWithRetry(ctxAlloc, store, stackCfg, ctxData, envName, max, prefer, issue, pr, logger)
+				rec, err = allocateSlotWithRetry(ctxAlloc, envStore.store, envStore.stackCfg, envStore.templateCtx, envName, max, prefer, issue, pr, logger)
 				if err != nil {
 					return err
 				}
@@ -284,18 +245,7 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				VarFiles: varFiles,
 			}
 
-			stackCfgBase, ctxBase, err := config.LoadStackConfig(opts.ConfigPath, loadOptsBase)
-			if err != nil {
-				return err
-			}
-
-			envCfg, err := config.ResolveEnvironment(stackCfgBase, envName)
-			if err != nil {
-				return err
-			}
-
-			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-			store, err := state.NewStore(stackCfgBase, kubeClient, logger)
+			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, loadOptsBase, logger)
 			if err != nil {
 				return err
 			}
@@ -304,28 +254,9 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 			ctxList, cancelList := context.WithTimeout(cmd.Context(), 30*time.Second)
 			defer cancelList()
 
-			records, err := store.List(ctxList)
+			found, err := findMatchingEnvRecord(ctxList, envStore.store, envName, slot, issue, pr)
 			if err != nil {
 				return err
-			}
-
-			var found *state.EnvRecord
-			for i := range records {
-				rec := records[i]
-				if envName != "" && rec.Env != envName {
-					continue
-				}
-				if slot > 0 && rec.Slot != slot {
-					continue
-				}
-				if issue > 0 && rec.Issue != issue {
-					continue
-				}
-				if pr > 0 && rec.PR != pr {
-					continue
-				}
-				found = &rec
-				break
 			}
 
 			var rec state.EnvRecord
@@ -337,7 +268,7 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				ctxAlloc, cancelAlloc := context.WithTimeout(cmd.Context(), 6*time.Hour)
 				defer cancelAlloc()
 
-				rec, err = allocateSlotWithRetry(ctxAlloc, store, stackCfgBase, ctxBase, envName, maxSlots, prefer, issue, pr, logger)
+				rec, err = allocateSlotWithRetry(ctxAlloc, envStore.store, envStore.stackCfg, envStore.templateCtx, envName, maxSlots, prefer, issue, pr, logger)
 				if err != nil {
 					return err
 				}
@@ -349,7 +280,7 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				ctxNs, cancelNs := context.WithTimeout(cmd.Context(), 15*time.Second)
 				defer cancelNs()
 				nsArgs := []string{"get", "ns", rec.Namespace}
-				if err := kubeClient.RunRaw(ctxNs, nil, nsArgs...); err != nil {
+				if err := envStore.kubeClient.RunRaw(ctxNs, nil, nsArgs...); err != nil {
 					logger.Warn("namespace missing for existing environment; resources will be recreated",
 						"namespace", rec.Namespace,
 						"slot", rec.Slot,
@@ -420,7 +351,7 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 					ctxApply, cancelApply := context.WithTimeout(cmd.Context(), 10*time.Minute)
 					defer cancelApply()
 
-					if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, envCfg, true, true); err != nil {
+					if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, envStore.envCfg, true, true); err != nil {
 						return err
 					}
 				} else {
@@ -503,32 +434,21 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 				envName = "ai"
 			}
 
-			// We first load stack config without slot/namespace to obtain state config
-			// and environment connection details.
-			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName})
-			if err != nil {
-				return err
-			}
-			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
-			if err != nil {
-				return err
-			}
-
-			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-			store, err := state.NewStore(stackCfg, kubeClient, logger)
-			if err != nil {
-				return err
-			}
-
-			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Minute)
 			defer cancel()
 
-			records, err := store.List(ctx)
+			// Load stack/state store once to enumerate known environments.
+			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, config.LoadOptions{Env: envName}, logger)
 			if err != nil {
 				return err
 			}
 
-			stateNS := stackCfg.State.ConfigMapNamespace
+			records, err := envStore.store.List(ctx)
+			if err != nil {
+				return err
+			}
+
+			stateNS := envStore.stackCfg.State.ConfigMapNamespace
 
 			for _, rec := range records {
 				if envName != "" && rec.Env != envName {
@@ -557,12 +477,12 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 					return err
 				}
 
-				if err := destroyStack(ctx, logger, stackSlot, ctxData, envCfg, envName); err != nil {
+				if err := destroyStack(ctx, logger, stackSlot, ctxData, envStore.envCfg, envName); err != nil {
 					return err
 				}
 
 				if withConfigMap && stateNS != "" && rec.ConfigName != "" {
-					_, _ = kubeClient.RunAndCapture(ctx, nil,
+					_, _ = envStore.kubeClient.RunAndCapture(ctx, nil,
 						"-n", stateNS,
 						"delete", "configmap", rec.ConfigName, "--ignore-not-found",
 					)
@@ -637,7 +557,7 @@ func newManageEnvGCCommand(opts *Options) *cobra.Command {
 				}
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Minute)
 			defer cancel()
 
 			removed, err := store.GarbageCollect(ctx, envName, ttl)
@@ -793,17 +713,7 @@ func newManageEnvResolveCommand(opts *Options) *cobra.Command {
 				Env: envName,
 			}
 
-			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
-			if err != nil {
-				return err
-			}
-			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
-			if err != nil {
-				return err
-			}
-
-			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-			store, err := state.NewStore(stackCfg, kubeClient, logger)
+			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, loadOpts, logger)
 			if err != nil {
 				return err
 			}
@@ -811,28 +721,9 @@ func newManageEnvResolveCommand(opts *Options) *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 			defer cancel()
 
-			records, err := store.List(ctx)
+			found, err := findMatchingEnvRecord(ctx, envStore.store, envName, slot, issue, pr)
 			if err != nil {
 				return err
-			}
-
-			var found *state.EnvRecord
-			for i := range records {
-				rec := records[i]
-				if envName != "" && rec.Env != envName {
-					continue
-				}
-				if slot > 0 && rec.Slot != slot {
-					continue
-				}
-				if issue > 0 && rec.Issue != issue {
-					continue
-				}
-				if pr > 0 && rec.PR != pr {
-					continue
-				}
-				found = &rec
-				break
 			}
 
 			if found == nil {
@@ -887,22 +778,14 @@ func newManageEnvSetCommand(opts *Options) *cobra.Command {
 				envName = "ai"
 			}
 
-			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName})
-			if err != nil {
-				return err
-			}
-			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
-			if err != nil {
-				return err
-			}
-			store, err := state.NewStore(stackCfg, kube.NewClient(envCfg.Kubeconfig, envCfg.Context), logger)
+			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, config.LoadOptions{Env: envName}, logger)
 			if err != nil {
 				return err
 			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 			defer cancel()
-			return store.UpdateAttributes(ctx, slot, issue, pr)
+			return envStore.store.UpdateAttributes(ctx, slot, issue, pr)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment type (default: ai)")
@@ -952,16 +835,11 @@ func newManageEnvSyncCodeCommand(opts *Options) *cobra.Command {
 				if envName == "" {
 					envName = "ai"
 				}
-				stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName})
+				envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, config.LoadOptions{Env: envName}, logger)
 				if err != nil {
 					return err
 				}
-				envCfg, err := config.ResolveEnvironment(stackCfg, envName)
-				if err != nil {
-					return err
-				}
-				kClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-				if err := fixWorkspacePermissions(cmd.Context(), kClient, namespace); err != nil {
+				if err := fixWorkspacePermissions(cmd.Context(), envStore.kubeClient, namespace); err != nil {
 					logger.Warn("workspace permission fix failed", "error", err)
 				}
 			}
@@ -1024,6 +902,48 @@ func newManageEnvCommentCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// envSlotStore bundles stack configuration, template context, environment config and state store for slot operations.
+type envSlotStore struct {
+	stackCfg    *config.StackConfig
+	templateCtx config.TemplateContext
+	envCfg      config.Environment
+	kubeClient  *kube.Client
+	store       *state.Store
+}
+
+// loadEnvSlotStore loads stack configuration, resolves the target environment, constructs a Kubernetes client
+// and initializes the state store for slot management.
+func loadEnvSlotStore(
+	configPath string,
+	envName string,
+	loadOpts config.LoadOptions,
+	logger *slog.Logger,
+) (*envSlotStore, error) {
+	stackCfg, ctxData, err := config.LoadStackConfig(configPath, loadOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	envCfg, err := config.ResolveEnvironment(stackCfg, envName)
+	if err != nil {
+		return nil, err
+	}
+
+	kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+	store, err := state.NewStore(stackCfg, kubeClient, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return &envSlotStore{
+		stackCfg:    stackCfg,
+		templateCtx: ctxData,
+		envCfg:      envCfg,
+		kubeClient:  kubeClient,
+		store:       store,
+	}, nil
+}
+
 // allocateSlotWithRetry encapsulates the common allocation loop for both "create"
 // and higher-level helpers that need to allocate a new slot.
 func allocateSlotWithRetry(
@@ -1063,6 +983,41 @@ func allocateSlotWithRetry(
 		case <-time.After(retryDelay):
 		}
 	}
+}
+
+// findMatchingEnvRecord lists environment records in the store and returns the first record
+// matching the provided selector (envName/slot/issue/pr). When no record is found, it returns (nil, nil).
+func findMatchingEnvRecord(
+	ctx context.Context,
+	store *state.Store,
+	envName string,
+	slot int,
+	issue int,
+	pr int,
+) (*state.EnvRecord, error) {
+	records, err := store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range records {
+		rec := records[i]
+		if envName != "" && rec.Env != envName {
+			continue
+		}
+		if slot > 0 && rec.Slot != slot {
+			continue
+		}
+		if issue > 0 && rec.Issue != issue {
+			continue
+		}
+		if pr > 0 && rec.PR != pr {
+			continue
+		}
+		return &records[i], nil
+	}
+
+	return nil, nil
 }
 
 // printResolveOutput prints a slot resolution result in plain or JSON format.
