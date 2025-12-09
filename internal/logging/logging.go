@@ -15,13 +15,13 @@ type Level slog.Level
 
 const (
 	// LevelDebug represents the debug logging level.
-	LevelDebug Level = Level(slog.LevelDebug)
+	LevelDebug = Level(slog.LevelDebug)
 	// LevelInfo represents the informational logging level.
-	LevelInfo Level = Level(slog.LevelInfo)
+	LevelInfo = Level(slog.LevelInfo)
 	// LevelWarn represents the warning logging level.
-	LevelWarn Level = Level(slog.LevelWarn)
+	LevelWarn = Level(slog.LevelWarn)
 	// LevelError represents the error logging level.
-	LevelError Level = Level(slog.LevelError)
+	LevelError = Level(slog.LevelError)
 )
 
 // ParseLevel converts a textual log level into a Level value.

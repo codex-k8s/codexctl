@@ -251,7 +251,7 @@ func (e *Executor) runSleep(ctx context.Context, step config.HookStep) error {
 	}
 }
 
-func (e *Executor) runPreflight(ctx context.Context) error {
+func (e *Executor) runPreflight(_ context.Context) error {
 	// Minimal preflight for hooks: verify that kubectl binary is available.
 	_, err := exec.LookPath("kubectl")
 	if err != nil {

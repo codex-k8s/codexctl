@@ -59,7 +59,7 @@ This file is the single source of truth for `codexctl`, GitHub Actions and dev-A
 
 ### 🧩 1.2. Templating and context
 
-`services.yaml` and all referenced manifests are rendered using Go templates. In templates you have access to:
+`services.yaml` and all referenced manifests are rendered using Go templates. In templates, you have access to:
 
 - `{{ .Env }}` — current environment (`dev`, `staging`, `ai`);
 - `{{ .Namespace }}` — Kubernetes namespace;

@@ -13,11 +13,11 @@ import (
 
 // Builtin prompt kinds used by Codex integrations.
 const (
-	PromptKindDevIssue           = "dev_issue"
-	PromptKindReviewFix          = "review_fix"
-	PromptKindPlanIssue          = "plan_issue"
-	PromptKindPlanReview         = "plan_review"
-	PromptKindPlanReviewRecreate = "plan_review_recreate"
+	KindDevIssue           = "dev_issue"
+	KindReviewFix          = "review_fix"
+	KindPlanIssue          = "plan_issue"
+	KindPlanReview         = "plan_review"
+	KindPlanReviewRecreate = "plan_review_recreate"
 
 	defaultPromptLang          = "en"
 	builtinTemplateDir         = "templates"
@@ -117,14 +117,10 @@ func (r *Renderer) RenderBuiltinPrompt(kind, lang string) ([]byte, bool, error) 
 		}
 		return out, candidate.usedFallback, nil
 	}
-	if raw == nil {
-		if lastErr == nil {
-			lastErr = fmt.Errorf("no builtin prompt template candidates found")
-		}
-		return nil, false, fmt.Errorf("load builtin prompt kind=%q lang=%q: %w", kind, effectiveLang, lastErr)
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no builtin prompt template candidates found")
 	}
-
-	return nil, false, fmt.Errorf("no builtin prompt template selected for kind=%q lang=%q", kind, effectiveLang)
+	return nil, false, fmt.Errorf("load builtin prompt kind=%q lang=%q: %w", kind, effectiveLang, lastErr)
 }
 
 // renderBuiltin renders the given builtin template bytes with the stack template context.

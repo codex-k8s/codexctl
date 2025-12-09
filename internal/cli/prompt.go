@@ -208,8 +208,8 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			templatePath := cmd.Flag("template").Value.String()
 			switch kind {
 			case "":
-				kind = prompt.PromptKindDevIssue
-			case prompt.PromptKindDevIssue, prompt.PromptKindReviewFix, prompt.PromptKindPlanIssue, prompt.PromptKindPlanReview, prompt.PromptKindPlanReviewRecreate:
+				kind = prompt.KindDevIssue
+			case prompt.KindDevIssue, prompt.KindReviewFix, prompt.KindPlanIssue, prompt.KindPlanReview, prompt.KindPlanReviewRecreate:
 				// valid
 			default:
 				return fmt.Errorf("unknown prompt kind %q", kind)

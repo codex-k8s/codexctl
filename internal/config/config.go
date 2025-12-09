@@ -110,7 +110,7 @@ type ImageSpec struct {
 	// Local is the full local image reference in the development registry
 	// (e.g. "localhost:32000/library/busybox:1.37.0").
 	Local string `yaml:"local,omitempty"`
-	// Repository is the base image repository (e.g. "localhost:32000/alimentor/django-backend")
+	// Repository is the base image repository (e.g. "localhost:32000/your-project/django-backend")
 	// used primarily for build images.
 	Repository string `yaml:"repository,omitempty"`
 	// Tag is an optional explicit tag string for build images when templating is not needed.
@@ -403,7 +403,7 @@ func funcSlug(value string) string {
 	return v
 }
 
-// funcTruncSHA truncates a SHA-like string to a shorter length for display.
+// funcTruncSHA truncates an SHA-like string to a shorter length for display.
 func funcTruncSHA(s string) string {
 	const max = 12
 	if len(s) <= max {
