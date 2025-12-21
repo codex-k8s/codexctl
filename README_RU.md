@@ -305,7 +305,7 @@ infrastructure:
             name: postgres
             namespace: "{{ .Namespace }}"
             condition: Available
-            timeout: "300s"
+            timeout: "1200s"
 ```
 
 Каждый элемент:

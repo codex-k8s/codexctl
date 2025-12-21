@@ -67,7 +67,7 @@ type CodexConfig struct {
 type CodexTimeouts struct {
 	// Exec is the overall timeout for a "prompt run" execution (e.g. "60m").
 	Exec string `yaml:"exec,omitempty"`
-	// Rollout is the timeout passed to "kubectl rollout status" (e.g. "300s").
+	// Rollout is the timeout passed to "kubectl rollout status" (e.g. "1200s").
 	Rollout string `yaml:"rollout,omitempty"`
 }
 

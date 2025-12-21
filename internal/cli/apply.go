@@ -213,7 +213,7 @@ func applyStack(
 			logger.Info("skip wait: namespace is empty, resources may be cluster-scoped or namespaced explicitly in manifests")
 		} else {
 			logger.Info("waiting for deployments to become Available", "namespace", ctxData.Namespace)
-			if err := kubeClient.WaitForDeployments(ctx, ctxData.Namespace, "300s"); err != nil {
+			if err := kubeClient.WaitForDeployments(ctx, ctxData.Namespace, "1200s"); err != nil {
 				return err
 			}
 		}

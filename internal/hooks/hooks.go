@@ -158,7 +158,7 @@ func (e *Executor) runKubectlWait(ctx context.Context, step config.HookStep, ste
 		condition = "Available"
 	}
 	if timeout == "" {
-		timeout = "300s"
+		timeout = "1200s"
 	}
 
 	e.logger.Info("running kubectl.wait hook", "step", step.Name, "kind", kind, "name", name, "namespace", ns, "condition", condition, "timeout", timeout)

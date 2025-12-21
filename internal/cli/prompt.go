@@ -140,7 +140,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			logger.Info("waiting for codex deployment to be ready", "namespace", ns)
 			rolloutTimeout := ctxData.Codex.Timeouts.Rollout
 			if rolloutTimeout == "" {
-				rolloutTimeout = "300s"
+				rolloutTimeout = "1200s"
 			}
 			if err := kubeClient.RunRaw(
 				ctxExec,
