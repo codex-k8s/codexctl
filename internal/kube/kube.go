@@ -46,7 +46,7 @@ func (c *Client) Delete(ctx context.Context, yaml []byte, ignoreNotFound bool) e
 // WaitForDeployments waits until all deployments in the given namespace are Available.
 func (c *Client) WaitForDeployments(ctx context.Context, namespace string, timeout string) error {
 	if timeout == "" {
-		timeout = "300s"
+		timeout = "1200s"
 	}
 	args := []string{"wait", "--for=condition=Available", "deployment", "--all", fmt.Sprintf("--timeout=%s", timeout)}
 	if namespace != "" {
