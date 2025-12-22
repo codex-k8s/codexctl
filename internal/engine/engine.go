@@ -170,6 +170,9 @@ func applyNamespace(doc map[string]any, ns string) {
 		return
 	}
 	meta := getOrCreateMap(doc, "metadata")
+	if existing, _ := meta["namespace"].(string); strings.TrimSpace(existing) != "" {
+        return
+    }
 	meta["namespace"] = ns
 }
 
