@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -83,6 +84,13 @@ func runKubectlVersion(ctx context.Context) error {
 	return cmd.Run()
 }
 
+func runToolCheck(name string) error {
+	if _, err := exec.LookPath(name); err != nil {
+		return fmt.Errorf("%s binary not found in PATH: %w", name, err)
+	}
+	return nil
+}
+
 func runKubectlAuthCheck(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "kubectl", "auth", "can-i", "get", "pods")
 	return cmd.Run()
@@ -97,8 +105,8 @@ func runDockerChecks(ctx context.Context) error {
 }
 
 func runGhChecks(ctx context.Context) error {
-	if _, err := exec.LookPath("gh"); err != nil {
-		return fmt.Errorf("gh CLI not found in PATH: %w", err)
+	if err := runToolCheck("gh"); err != nil {
+		return err
 	}
 	cmd := exec.CommandContext(ctx, "gh", "--version")
 	return cmd.Run()
@@ -140,6 +148,42 @@ func hasGitHubInSteps(steps []config.HookStep) bool {
 	return false
 }
 
+func hasShellHooks(cfg *config.StackConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	if hasShellInSteps(cfg.Hooks.BeforeAll) || hasShellInSteps(cfg.Hooks.AfterAll) {
+		return true
+	}
+	for _, infra := range cfg.Infrastructure {
+		if hasShellInResourceHooks(infra.Hooks) {
+			return true
+		}
+	}
+	for _, svc := range cfg.Services {
+		if hasShellInResourceHooks(svc.Hooks) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasShellInResourceHooks(h config.ResourceHooks) bool {
+	return hasShellInSteps(h.BeforeApply) ||
+		hasShellInSteps(h.AfterApply) ||
+		hasShellInSteps(h.BeforeDestroy) ||
+		hasShellInSteps(h.AfterDestroy)
+}
+
+func hasShellInSteps(steps []config.HookStep) bool {
+	for _, s := range steps {
+		if strings.TrimSpace(s.Run) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func runDoctorChecks(
 	ctx context.Context,
 	logger *slog.Logger,
@@ -149,6 +193,31 @@ func runDoctorChecks(
 	envName string,
 ) error {
 	var fatalErrs []error
+
+	checkRequiredTool := func(name string) {
+		if err := runToolCheck(name); err != nil {
+			logger.Error("tool check failed", "tool", name, "error", err)
+			fatalErrs = append(fatalErrs, err)
+		} else {
+			logger.Info("tool check ok", "tool", name)
+		}
+	}
+
+	checkOptionalTool := func(name string, note string) {
+		if err := runToolCheck(name); err != nil {
+			logger.Warn("optional tool missing", "tool", name, "note", note, "error", err)
+		} else {
+			logger.Info("tool check ok", "tool", name)
+		}
+	}
+
+	if hasShellHooks(stackCfg) {
+		checkRequiredTool("bash")
+	}
+	if envName == "ai" {
+		checkRequiredTool("git")
+		checkOptionalTool("rsync", "source sync will fall back to slower Go copy")
+	}
 
 	if err := runKubectlVersion(ctx); err != nil {
 		logger.Error("kubectl version check failed", "error", err)
@@ -174,7 +243,7 @@ func runDoctorChecks(
 	}
 
 	usesGitHub := hasGitHubHooks(stackCfg)
-	if usesGitHub {
+	if usesGitHub || envName == "ai" {
 		if err := runGhChecks(ctx); err != nil {
 			logger.Error("GitHub CLI checks failed", "error", err)
 			fatalErrs = append(fatalErrs, err)
@@ -185,7 +254,7 @@ func runDoctorChecks(
 		codexToken := ctxData.EnvMap["CODEX_GH_PAT"]
 		codexUser := ctxData.EnvMap["CODEX_GH_USERNAME"]
 		if codexToken == "" || codexUser == "" {
-			err := fmt.Errorf("CODEX_GH_PAT and CODEX_GH_USERNAME must be defined when GitHub hooks are used")
+			err := fmt.Errorf("CODEX_GH_PAT and CODEX_GH_USERNAME must be defined when GitHub integration is enabled")
 			logger.Error("Codex GitHub credentials missing", "error", err)
 			fatalErrs = append(fatalErrs, err)
 		} else {
