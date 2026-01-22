@@ -30,6 +30,7 @@ Available infrastructure and application services:
 
 Core tools you can use:
 - kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress.
+- codexctl: manage environments and dev/ai slots (images/apply/manage-env/prompt).
 - gh: read/comment on PRs and reviews, fetch lists of comments and their statuses.
 - curl / httpie: test HTTP endpoints of the environment (via Ingress and dev-grpc-gateway, see documentation).
 - rg (ripgrep)
@@ -46,6 +47,7 @@ Additional up-to-date information source:
 - You have the Context7 MCP server configured.
 - When addressing review feedback that involves new libraries, tools or rarely used APIs, first consult current documentation via Context7.
 - For non-trivial changes, favour recommended, non-deprecated practices from the docs obtained through Context7 before modifying the code.
+- In Context7 you can also look up `github.com/codex-k8s/codexctl` (CLI usage, commands, examples).
 {{- end }}
 
 PR and review context:
