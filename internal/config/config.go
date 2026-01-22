@@ -43,6 +43,10 @@ type CodexConfig struct {
 	// relative to the project root. The template is rendered with the same
 	// template context as services.yaml.
 	ConfigTemplate string `yaml:"configTemplate,omitempty"`
+	// Model is the default model identifier used by Codex.
+	Model string `yaml:"model,omitempty"`
+	// ModelReasoningEffort configures the reasoning effort for the Codex model.
+	ModelReasoningEffort string `yaml:"modelReasoningEffort,omitempty"`
 	// Links defines project-specific helpful links for environment comments (e.g., Swagger, Admin panels).
 	Links []Link `yaml:"links,omitempty"`
 	// ExtraTools is an optional list of additional tools available in the
