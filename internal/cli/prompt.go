@@ -112,6 +112,8 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 
 			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 
+			applyIssueReasoningEffortOverride(cmd.Context(), logger, envName, issue, stackCfg, &ctxData)
+
 			r := prompt.NewRenderer(stackCfg, ctxData)
 
 			// Render Codex config and write it into ~/.codex/config.toml inside the Codex pod.
