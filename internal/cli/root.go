@@ -65,6 +65,7 @@ func newRootCommand(opts *Options, logger *slog.Logger) *cobra.Command {
 	cmd.AddCommand(
 		newRenderCommand(opts),
 		newApplyCommand(opts),
+		newCICommand(opts),
 		newImagesCommand(opts),
 		newDestroyCommand(opts),
 		newStatusCommand(opts),

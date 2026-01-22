@@ -30,6 +30,7 @@ type StackConfig struct {
 	Infrastructure []InfraItem            `yaml:"infrastructure,omitempty"`
 	Services       []Service              `yaml:"services,omitempty"`
 	Hooks          HookSet                `yaml:"hooks,omitempty"`
+	DataPaths      *DataPaths             `yaml:"dataPaths,omitempty"`
 	State          StateConfig            `yaml:"state,omitempty"`
 	Versions       map[string]string      `yaml:"versions,omitempty"`
 }

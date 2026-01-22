@@ -129,10 +129,6 @@ func newManageEnvEnsureSlotCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			if issue <= 0 && pr <= 0 && slot <= 0 {
-				return fmt.Errorf("at least one of --issue, --pr or --slot must be specified")
-			}
-
 			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
 			if err != nil {
 				return err
@@ -144,45 +140,19 @@ func newManageEnvEnsureSlotCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
-			envName := opts.Env
-			if envName == "" {
-				envName = "ai"
-			}
-
-			loadOpts := config.LoadOptions{
-				Env:      envName,
-				UserVars: inlineVars,
-				VarFiles: varFiles,
-			}
-			ctxList, cancelList := context.WithTimeout(cmd.Context(), 30*time.Second)
-			defer cancelList()
-
-			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, loadOpts, logger)
+			res, err := ensureSlot(cmd.Context(), logger, opts, ensureSlotRequest{
+				envName:    opts.Env,
+				issue:      issue,
+				pr:         pr,
+				slot:       slot,
+				maxSlots:   max,
+				inlineVars: inlineVars,
+				varFiles:   varFiles,
+			})
 			if err != nil {
 				return err
 			}
-
-			// Try to find an existing record first.
-			found, err := findMatchingEnvRecord(ctxList, envStore.store, envName, slot, issue, pr)
-			if err != nil {
-				return err
-			}
-
-			var rec state.EnvRecord
-			if found != nil {
-				rec = *found
-			} else {
-				prefer := slot
-				ctxAlloc, cancelAlloc := context.WithTimeout(cmd.Context(), 6*time.Hour)
-				defer cancelAlloc()
-
-				rec, err = allocateSlotWithRetry(ctxAlloc, envStore.store, envStore.stackCfg, envStore.templateCtx, envName, max, prefer, issue, pr, logger)
-				if err != nil {
-					return err
-				}
-			}
-
-			return printResolveOutput(rec, output, logger)
+			return printResolveOutput(res.record, output, logger)
 		},
 	}
 
@@ -234,133 +204,21 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
-			envName := opts.Env
-			if envName == "" {
-				envName = "ai"
-			}
-
-			loadOptsBase := config.LoadOptions{
-				Env:      envName,
-				UserVars: inlineVars,
-				VarFiles: varFiles,
-			}
-
-			envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, loadOptsBase, logger)
+			res, err := ensureReady(cmd.Context(), logger, opts, ensureReadyRequest{
+				envName:       opts.Env,
+				issue:         issue,
+				pr:            pr,
+				slot:          slot,
+				maxSlots:      maxSlots,
+				codeRootBase:  codeRootBase,
+				source:        source,
+				prepareImages: prepareImages,
+				doApply:       doApply,
+				inlineVars:    inlineVars,
+				varFiles:      varFiles,
+			})
 			if err != nil {
 				return err
-			}
-
-			// Ensure slot exists (reuse selector logic from ensure-slot).
-			ctxList, cancelList := context.WithTimeout(cmd.Context(), 30*time.Second)
-			defer cancelList()
-
-			found, err := findMatchingEnvRecord(ctxList, envStore.store, envName, slot, issue, pr)
-			if err != nil {
-				return err
-			}
-
-			var rec state.EnvRecord
-			created := false
-			if found != nil {
-				rec = *found
-			} else {
-				prefer := slot
-				ctxAlloc, cancelAlloc := context.WithTimeout(cmd.Context(), 6*time.Hour)
-				defer cancelAlloc()
-
-				rec, err = allocateSlotWithRetry(ctxAlloc, envStore.store, envStore.stackCfg, envStore.templateCtx, envName, maxSlots, prefer, issue, pr, logger)
-				if err != nil {
-					return err
-				}
-				created = true
-			}
-
-			recreated := false
-			if !created && strings.TrimSpace(rec.Namespace) != "" {
-				ctxNs, cancelNs := context.WithTimeout(cmd.Context(), 15*time.Second)
-				defer cancelNs()
-				nsArgs := []string{"get", "ns", rec.Namespace}
-				if err := envStore.kubeClient.RunRaw(ctxNs, nil, nsArgs...); err != nil {
-					logger.Warn("namespace missing for existing environment; resources will be recreated",
-						"namespace", rec.Namespace,
-						"slot", rec.Slot,
-						"env", rec.Env,
-						"error", err,
-					)
-					recreated = true
-				}
-			}
-
-			// Optionally sync code into workspace.
-			if codeRootBase != "" && source != "" {
-				target := fmt.Sprintf("%s/%d/src", strings.TrimSuffix(codeRootBase, "/"), rec.Slot)
-				if err := syncSources(source, target); err != nil {
-					return fmt.Errorf("sync sources to %q: %w", target, err)
-				}
-				logger.Info("slot workspace synced (ensure-ready)",
-					"slot", rec.Slot,
-					"target", target,
-					"source", source,
-					"env", envName,
-					"namespace", rec.Namespace,
-				)
-			}
-
-			// Reload stack config for the concrete slot.
-			loadOptsSlot := config.LoadOptions{
-				Env:       envName,
-				Namespace: rec.Namespace,
-				Slot:      rec.Slot,
-				UserVars:  inlineVars,
-				VarFiles:  varFiles,
-			}
-
-			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOptsSlot)
-			if err != nil {
-				return err
-			}
-
-			// Optionally prepare images. For existing environments with a live namespace
-			// we skip heavy image work and only run it when the environment was just
-			// created or needs full recreation.
-			if prepareImages {
-				if created || recreated {
-					ctxImages, cancelImages := context.WithTimeout(cmd.Context(), 2*time.Hour)
-					defer cancelImages()
-
-					if err := mirrorExternalImages(ctxImages, logger, stackCfg); err != nil {
-						return err
-					}
-					if err := buildImages(ctxImages, logger, stackCfg, ctxData); err != nil {
-						return err
-					}
-				} else {
-					logger.Info("skipping image preparation for existing environment",
-						"slot", rec.Slot,
-						"namespace", rec.Namespace,
-						"env", rec.Env,
-					)
-				}
-			}
-
-			// Optionally apply manifests. Similar to image preparation, we only apply
-			// manifests for freshly created or recreated environments to avoid
-			// unnecessary redeploys and migrations on every ensure-ready call.
-			if doApply {
-				if created || recreated {
-					ctxApply, cancelApply := context.WithTimeout(cmd.Context(), 10*time.Minute)
-					defer cancelApply()
-
-					if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, envStore.envCfg, true, true); err != nil {
-						return err
-					}
-				} else {
-					logger.Info("skipping apply for existing environment",
-						"slot", rec.Slot,
-						"namespace", rec.Namespace,
-						"env", rec.Env,
-					)
-				}
 			}
 
 			if strings.ToLower(output) == "json" {
@@ -372,22 +230,22 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 					Recreated bool   `json:"recreated,omitempty"`
 				}
 				payload, _ := json.Marshal(out{
-					Slot:      rec.Slot,
-					Namespace: rec.Namespace,
-					Env:       rec.Env,
-					Created:   created,
-					Recreated: recreated,
+					Slot:      res.record.Slot,
+					Namespace: res.record.Namespace,
+					Env:       res.record.Env,
+					Created:   res.created,
+					Recreated: res.recreated,
 				})
 				fmt.Println(string(payload))
 				return nil
 			}
 
 			logger.Info("environment ensured ready",
-				"slot", rec.Slot,
-				"namespace", rec.Namespace,
-				"env", rec.Env,
-				"created", created,
-				"recreated", recreated,
+				"slot", res.record.Slot,
+				"namespace", res.record.Namespace,
+				"env", res.record.Env,
+				"created", res.created,
+				"recreated", res.recreated,
 			)
 			return nil
 		},
@@ -480,6 +338,9 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 				if err := destroyStack(ctx, logger, stackSlot, ctxData, envStore.envCfg, envName); err != nil {
 					return err
 				}
+				if err := handleDataPaths(logger, stackSlot, dataPathDelete); err != nil {
+					logger.Warn("failed to delete data paths for environment", "slot", rec.Slot, "namespace", rec.Namespace, "error", err)
+				}
 
 				if withConfigMap && stateNS != "" && rec.ConfigName != "" {
 					_, _ = envStore.kubeClient.RunAndCapture(ctx, nil,
@@ -532,7 +393,7 @@ func newManageEnvGCCommand(opts *Options) *cobra.Command {
 				VarFiles: varFiles,
 			}
 
-			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
 			if err != nil {
 				return err
 			}
@@ -576,12 +437,20 @@ func newManageEnvGCCommand(opts *Options) *cobra.Command {
 			for _, rec := range removed {
 				logger.Info("performing full GC for slot", "slot", rec.Slot, "env", rec.Env, "namespace", rec.Namespace)
 
-				slotCtx := ctxData
-				slotCtx.Env = rec.Env
-				slotCtx.Namespace = rec.Namespace
-				slotCtx.Slot = rec.Slot
+				loadOptsSlot := config.LoadOptions{
+					Env:       rec.Env,
+					Namespace: rec.Namespace,
+					Slot:      rec.Slot,
+					UserVars:  inlineVars,
+					VarFiles:  varFiles,
+				}
+				stackSlot, slotCtx, err := config.LoadStackConfig(opts.ConfigPath, loadOptsSlot)
+				if err != nil {
+					logger.Error("load stack config for slot gc failed", "slot", rec.Slot, "error", err)
+					continue
+				}
 
-				manifests, err := eng.RenderStack(stackCfg, slotCtx)
+				manifests, err := eng.RenderStack(stackSlot, slotCtx)
 				if err != nil {
 					logger.Error("render stack for slot gc failed", "slot", rec.Slot, "error", err)
 				} else {
@@ -596,6 +465,10 @@ func newManageEnvGCCommand(opts *Options) *cobra.Command {
 					}
 				}
 
+				if err := handleDataPaths(logger, stackSlot, dataPathDelete); err != nil {
+					logger.Warn("failed to delete data paths during slot gc", "slot", rec.Slot, "namespace", rec.Namespace, "error", err)
+				}
+
 				if rec.Issue != 0 || rec.PR != 0 {
 					body := "Environment slot {{ .Slot }} (namespace {{ .Namespace }}) was removed due to TTL expiration."
 					step := config.HookStep{
@@ -608,7 +481,7 @@ func newManageEnvGCCommand(opts *Options) *cobra.Command {
 						},
 					}
 					hookCtx := hooks.StepContext{
-						Stack:      stackCfg,
+						Stack:      stackSlot,
 						Template:   slotCtx,
 						EnvName:    envName,
 						KubeClient: kubeClient,

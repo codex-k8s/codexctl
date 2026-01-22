@@ -2,9 +2,13 @@
 package hooks
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -131,6 +135,14 @@ func (e *Executor) runBuiltin(ctx context.Context, step config.HookStep, stepCtx
 		return e.runKubectlWait(ctx, step, stepCtx)
 	case "github.comment":
 		return e.runGitHubComment(ctx, step, stepCtx)
+	case "codex.ensure-data-dirs":
+		return e.runEnsureDataDirs(ctx, step, stepCtx)
+	case "codex.ensure-codex-secrets":
+		return e.runEnsureCodexSecrets(ctx, step, stepCtx)
+	case "codex.check-dev-host-ports":
+		return e.runCheckDevHostPorts(ctx, step, stepCtx)
+	case "codex.reuse-dev-tls-secret":
+		return e.runReuseDevTLSSecret(ctx, step, stepCtx)
 	case "sleep":
 		return e.runSleep(ctx, step)
 	case "preflight":
@@ -265,6 +277,309 @@ func (e *Executor) runPreflight(_ context.Context) error {
 // RunPreflightBasic exposes the minimal kubectl presence check for reuse in doctor.
 func (e *Executor) RunPreflightBasic(ctx context.Context) error {
 	return e.runPreflight(ctx)
+}
+
+func (e *Executor) runEnsureDataDirs(_ context.Context, step config.HookStep, stepCtx StepContext) error {
+	if stepCtx.Stack == nil {
+		return fmt.Errorf("codex.ensure-data-dirs requires stack configuration")
+	}
+	resolved := config.ResolveDataPaths(stepCtx.Stack)
+	if resolved.Root == "" && resolved.EnvDir == "" && len(resolved.Paths) == 0 {
+		e.logger.Info("no data paths configured; skipping", "step", step.Name)
+		return nil
+	}
+
+	dirs := make([]string, 0, len(resolved.Paths)+2)
+	if resolved.Root != "" {
+		dirs = append(dirs, resolved.Root)
+	}
+	if resolved.EnvDir != "" {
+		dirs = append(dirs, resolved.EnvDir)
+	}
+	dirs = append(dirs, resolved.Paths...)
+	dirs = dedupeStrings(dirs)
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create data dir %q: %w", dir, err)
+		}
+	}
+	for _, dir := range dirs {
+		if err := os.Chmod(dir, 0o777); err != nil {
+			e.logger.Warn("failed to chmod data dir", "dir", dir, "error", err)
+		}
+	}
+	return nil
+}
+
+func (e *Executor) runEnsureCodexSecrets(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
+	if stepCtx.KubeClient == nil {
+		return fmt.Errorf("codex.ensure-codex-secrets requires a Kubernetes client")
+	}
+	ns := strings.TrimSpace(stepCtx.Template.Namespace)
+	if ns == "" {
+		e.logger.Info("namespace is empty, skipping codex secrets", "step", step.Name)
+		return nil
+	}
+
+	openAI := strings.TrimSpace(stepCtx.Template.EnvMap["OPENAI_API_KEY"])
+	context7 := strings.TrimSpace(stepCtx.Template.EnvMap["CONTEXT7_API_KEY"])
+	ghToken := strings.TrimSpace(stepCtx.Template.EnvMap["CODEX_GH_PAT"])
+
+	if openAI != "" {
+		if err := applyGenericSecret(ctx, stepCtx.KubeClient, ns, "openai-secret", map[string]string{
+			"OPENAI_API_KEY": openAI,
+		}); err != nil {
+			return fmt.Errorf("apply openai-secret: %w", err)
+		}
+	}
+
+	if ghToken != "" {
+		if err := applyGenericSecret(ctx, stepCtx.KubeClient, ns, "github-secret", map[string]string{
+			"CODEX_GH_PAT": ghToken,
+		}); err != nil {
+			return fmt.Errorf("apply github-secret: %w", err)
+		}
+	} else {
+		e.logger.Warn("CODEX_GH_PAT not set, Codex GitHub auth may fail")
+	}
+
+	if context7 != "" {
+		if err := applyGenericSecret(ctx, stepCtx.KubeClient, ns, "context7-secret", map[string]string{
+			"CONTEXT7_API_KEY": context7,
+		}); err != nil {
+			return fmt.Errorf("apply context7-secret: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (e *Executor) runCheckDevHostPorts(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
+	host := ""
+	if raw, ok := step.With["host"]; ok {
+		if v, ok := raw.(string); ok {
+			host = strings.TrimSpace(v)
+		}
+	}
+	if host == "" {
+		base := strings.TrimSpace(stepCtx.Template.BaseDomain["ai"])
+		if base != "" && stepCtx.Template.Slot > 0 {
+			host = fmt.Sprintf("dev-%d.%s", stepCtx.Template.Slot, base)
+		}
+	}
+
+	for _, port := range []int{80, 443} {
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", addr)
+		if err != nil {
+			e.logger.Warn("port not reachable on localhost", "port", port, "error", err)
+			continue
+		}
+		_ = conn.Close()
+	}
+
+	if host != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1/", nil)
+		if err != nil {
+			e.logger.Warn("failed to build HTTP probe request", "host", host, "error", err)
+			return nil
+		}
+		req.Host = host
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			e.logger.Warn("HTTP probe via ingress failed", "host", host, "error", err)
+			return nil
+		}
+		_ = resp.Body.Close()
+	}
+
+	return nil
+}
+
+func (e *Executor) runReuseDevTLSSecret(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
+	if stepCtx.KubeClient == nil {
+		return fmt.Errorf("codex.reuse-dev-tls-secret requires a Kubernetes client")
+	}
+	ns := strings.TrimSpace(stepCtx.Template.Namespace)
+	if ns == "" {
+		return nil
+	}
+	if stepCtx.Template.Slot <= 0 {
+		return nil
+	}
+	project := strings.TrimSpace(stepCtx.Template.Project)
+	if project == "" {
+		return nil
+	}
+
+	secretName := fmt.Sprintf("%s-dev-%d-tls", project, stepCtx.Template.Slot)
+	if raw, ok := step.With["secretName"]; ok {
+		if v, ok := raw.(string); ok && strings.TrimSpace(v) != "" {
+			secretName = strings.TrimSpace(v)
+		}
+	}
+
+	stagingNS := ""
+	if raw, ok := step.With["stagingNamespace"]; ok {
+		if v, ok := raw.(string); ok {
+			stagingNS = strings.TrimSpace(v)
+		}
+	}
+	if stagingNS == "" {
+		stagingNS = resolveNamespaceForEnv(stepCtx.Stack, stepCtx.Template, "staging")
+	}
+	if stagingNS == "" {
+		return nil
+	}
+
+	if err := copySecret(ctx, stepCtx.KubeClient, stagingNS, ns, secretName); err != nil {
+		e.logger.Warn("failed to copy TLS secret from staging", "secret", secretName, "error", err)
+	}
+
+	ready := waitForSecret(ctx, stepCtx.KubeClient, ns, secretName, 120, 2*time.Second)
+	if !ready {
+		e.logger.Warn("TLS secret not ready yet", "secret", secretName, "namespace", ns)
+		return nil
+	}
+
+	if err := copySecret(ctx, stepCtx.KubeClient, ns, stagingNS, secretName); err != nil {
+		e.logger.Warn("failed to persist TLS secret into staging", "secret", secretName, "error", err)
+	}
+	return nil
+}
+
+func applyGenericSecret(ctx context.Context, client *kube.Client, namespace, name string, data map[string]string) error {
+	if client == nil {
+		return fmt.Errorf("kubernetes client is nil")
+	}
+	if namespace == "" || name == "" || len(data) == 0 {
+		return nil
+	}
+
+	args := []string{"-n", namespace, "create", "secret", "generic", name}
+	for k, v := range data {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		args = append(args, fmt.Sprintf("--from-literal=%s=%s", k, v))
+	}
+	args = append(args, "--dry-run=client", "-o", "yaml")
+
+	manifest, err := client.RunAndCapture(ctx, nil, args...)
+	if err != nil {
+		return err
+	}
+	return client.RunRaw(ctx, manifest, "-n", namespace, "apply", "-f", "-")
+}
+
+func waitForSecret(ctx context.Context, client *kube.Client, namespace, name string, attempts int, delay time.Duration) bool {
+	if client == nil || namespace == "" || name == "" {
+		return false
+	}
+	for i := 0; i < attempts; i++ {
+		raw, err := client.RunAndCapture(ctx, nil, "-n", namespace, "get", "secret", name, "-o", "json", "--ignore-not-found")
+		if err == nil && len(bytes.TrimSpace(raw)) > 0 {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(delay):
+		}
+	}
+	return false
+}
+
+func copySecret(ctx context.Context, client *kube.Client, srcNamespace, dstNamespace, name string) error {
+	if client == nil {
+		return fmt.Errorf("kubernetes client is nil")
+	}
+	if srcNamespace == "" || dstNamespace == "" || name == "" {
+		return nil
+	}
+
+	raw, err := client.RunAndCapture(ctx, nil, "-n", srcNamespace, "get", "secret", name, "-o", "json", "--ignore-not-found")
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return fmt.Errorf("decode secret %q: %w", name, err)
+	}
+	sanitizeSecretMetadata(obj)
+
+	payload, err := json.Marshal(obj)
+	if err != nil {
+		return fmt.Errorf("encode secret %q: %w", name, err)
+	}
+
+	return client.RunRaw(ctx, payload, "-n", dstNamespace, "apply", "-f", "-")
+}
+
+func sanitizeSecretMetadata(obj map[string]any) {
+	if obj == nil {
+		return
+	}
+	if meta, ok := obj["metadata"].(map[string]any); ok {
+		delete(meta, "namespace")
+		delete(meta, "resourceVersion")
+		delete(meta, "uid")
+		delete(meta, "creationTimestamp")
+		delete(meta, "annotations")
+		delete(meta, "ownerReferences")
+		delete(meta, "managedFields")
+	}
+	delete(obj, "status")
+}
+
+func resolveNamespaceForEnv(stack *config.StackConfig, baseCtx config.TemplateContext, envName string) string {
+	if stack == nil || envName == "" {
+		return ""
+	}
+	ctx := baseCtx
+	ctx.Env = envName
+	ctx.Namespace = ""
+	ns, err := config.ResolveNamespace(stack, ctx, envName)
+	if err == nil && strings.TrimSpace(ns) != "" {
+		return strings.TrimSpace(ns)
+	}
+	if strings.TrimSpace(baseCtx.Project) == "" {
+		return ""
+	}
+	switch envName {
+	case "staging":
+		return fmt.Sprintf("%s-staging", baseCtx.Project)
+	case "dev":
+		return fmt.Sprintf("%s-dev", baseCtx.Project)
+	default:
+		return ""
+	}
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
 }
 
 func toInt(v any) (int, error) {
