@@ -8,6 +8,7 @@ ENV CODEX_IMAGE_VERSION=${CODEX_IMAGE_VERSION}
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC \
     GOPATH=/root/go \
+    GOBIN=/usr/local/bin \
     PATH=/usr/local/go/bin:/root/go/bin:/usr/local/bin:/usr/bin:/bin
 
 RUN apt-get update -y \
@@ -72,12 +73,8 @@ RUN curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VE
   && kubectl version --client --output=yaml || true
 
 # codexctl
-RUN mkdir -p /opt/codexctl
-WORKDIR /opt/codexctl
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN go build -o /usr/local/bin/codexctl ./cmd/codexctl
+ARG CODEXCTL_VERSION=latest
+RUN go install github.com/codex-k8s/codexctl/cmd/codexctl@${CODEXCTL_VERSION}
 
 WORKDIR /workspace
 
