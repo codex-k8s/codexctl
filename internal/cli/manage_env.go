@@ -180,6 +180,9 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 		source        string
 		prepareImages bool
 		doApply       bool
+		forceApply    bool
+		waitTimeout   string
+		waitSoftFail  bool
 		output        string
 	)
 
@@ -214,6 +217,9 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				source:        source,
 				prepareImages: prepareImages,
 				doApply:       doApply,
+				forceApply:    forceApply,
+				waitTimeout:   waitTimeout,
+				waitSoftFail:  waitSoftFail,
 				inlineVars:    inlineVars,
 				varFiles:      varFiles,
 			})
@@ -223,18 +229,20 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 
 			if strings.ToLower(output) == "json" {
 				type out struct {
-					Slot      int    `json:"slot"`
-					Namespace string `json:"namespace"`
-					Env       string `json:"env"`
-					Created   bool   `json:"created,omitempty"`
-					Recreated bool   `json:"recreated,omitempty"`
+					Slot       int    `json:"slot"`
+					Namespace  string `json:"namespace"`
+					Env        string `json:"env"`
+					Created    bool   `json:"created,omitempty"`
+					Recreated  bool   `json:"recreated,omitempty"`
+					InfraReady bool   `json:"infraReady"`
 				}
 				payload, _ := json.Marshal(out{
-					Slot:      res.record.Slot,
-					Namespace: res.record.Namespace,
-					Env:       res.record.Env,
-					Created:   res.created,
-					Recreated: res.recreated,
+					Slot:       res.record.Slot,
+					Namespace:  res.record.Namespace,
+					Env:        res.record.Env,
+					Created:    res.created,
+					Recreated:  res.recreated,
+					InfraReady: res.infraReady,
 				})
 				fmt.Println(string(payload))
 				return nil
@@ -246,6 +254,7 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 				"env", res.record.Env,
 				"created", res.created,
 				"recreated", res.recreated,
+				"infra_ready", res.infraReady,
 			)
 			return nil
 		},
@@ -260,6 +269,9 @@ func newManageEnvEnsureReadyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", ".", "Source directory to sync")
 	cmd.Flags().BoolVar(&prepareImages, "prepare-images", false, "Mirror external and build local images before apply")
 	cmd.Flags().BoolVar(&doApply, "apply", false, "Apply manifests for the ensured environment")
+	cmd.Flags().BoolVar(&forceApply, "force-apply", false, "Apply manifests even for existing environments")
+	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", "300s", "kubectl wait timeout for deployments")
+	cmd.Flags().BoolVar(&waitSoftFail, "wait-soft-fail", false, "Do not fail when deployment wait times out")
 	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")

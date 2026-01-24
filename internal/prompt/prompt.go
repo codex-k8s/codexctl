@@ -18,6 +18,7 @@ const (
 	KindPlanIssue          = "plan_issue"
 	KindPlanReview         = "plan_review"
 	KindPlanReviewRecreate = "plan_review_recreate"
+	KindRepairIssue        = "repair_issue"
 
 	defaultPromptLang          = "en"
 	builtinTemplateDir         = "templates"

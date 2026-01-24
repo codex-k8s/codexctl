@@ -38,14 +38,18 @@ type ensureReadyRequest struct {
 	source        string
 	prepareImages bool
 	doApply       bool
+	forceApply    bool
+	waitTimeout   string
+	waitSoftFail  bool
 	inlineVars    env.Vars
 	varFiles      []string
 }
 
 type ensureReadyResult struct {
-	record    state.EnvRecord
-	created   bool
-	recreated bool
+	record     state.EnvRecord
+	created    bool
+	recreated  bool
+	infraReady bool
 }
 
 func ensureSlot(ctx context.Context, logger *slog.Logger, opts *Options, req ensureSlotRequest) (ensureSlotResult, error) {
@@ -101,6 +105,7 @@ func ensureSlot(ctx context.Context, logger *slog.Logger, opts *Options, req ens
 
 func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req ensureReadyRequest) (ensureReadyResult, error) {
 	var res ensureReadyResult
+	res.infraReady = true
 	if req.issue <= 0 && req.pr <= 0 && req.slot <= 0 {
 		return res, fmt.Errorf("at least one of --issue, --pr or --slot must be specified")
 	}
@@ -195,12 +200,31 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 	}
 
 	if req.doApply {
-		if created || recreated {
+		applyNeeded := created || recreated || req.forceApply
+		if applyNeeded {
 			ctxApply, cancelApply := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancelApply()
 
-			if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, slotRes.store.envCfg, true, true); err != nil {
+			if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, slotRes.store.envCfg, true, false); err != nil {
 				return res, err
+			}
+
+			if rec.Namespace == "" {
+				logger.Info("skip wait: namespace is empty, resources may be cluster-scoped or namespaced explicitly in manifests")
+			} else {
+				waitTimeout := strings.TrimSpace(req.waitTimeout)
+				if waitTimeout == "" {
+					waitTimeout = "300s"
+				}
+				logger.Info("waiting for deployments to become Available", "namespace", rec.Namespace, "timeout", waitTimeout)
+				if err := slotRes.store.kubeClient.WaitForDeployments(ctx, rec.Namespace, waitTimeout); err != nil {
+					if req.waitSoftFail {
+						res.infraReady = false
+						logger.Warn("wait for deployments failed, continuing", "namespace", rec.Namespace, "error", err)
+					} else {
+						return res, err
+					}
+				}
 			}
 		} else {
 			logger.Info("skipping apply for existing environment",

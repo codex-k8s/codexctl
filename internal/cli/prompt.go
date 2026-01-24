@@ -35,6 +35,7 @@ func newPromptCommand(opts *Options) *cobra.Command {
 // newPromptRunCommand creates the "prompt run" subcommand that executes a Codex agent
 // inside a Kubernetes pod using the rendered configuration and prompt.
 func newPromptRunCommand(opts *Options) *cobra.Command {
+	var infraUnhealthy bool
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run a Codex agent inside a Kubernetes environment",
@@ -75,6 +76,9 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 			if _, ok := inlineVars["PROMPT_LANG"]; !ok && lang != "" {
 				inlineVars["PROMPT_LANG"] = lang
+			}
+			if infraUnhealthy {
+				inlineVars["INFRA_UNHEALTHY"] = "1"
 			}
 
 			slot, err := cmd.Flags().GetInt("slot")
@@ -211,7 +215,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			switch kind {
 			case "":
 				kind = prompt.KindDevIssue
-			case prompt.KindDevIssue, prompt.KindReviewFix, prompt.KindPlanIssue, prompt.KindPlanReview, prompt.KindPlanReviewRecreate:
+			case prompt.KindDevIssue, prompt.KindReviewFix, prompt.KindPlanIssue, prompt.KindPlanReview, prompt.KindPlanReviewRecreate, prompt.KindRepairIssue:
 				// valid
 			default:
 				return fmt.Errorf("unknown prompt kind %q", kind)
@@ -287,6 +291,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 	cmd.Flags().String("kind", "", "Builtin prompt kind (e.g. dev_issue, review_fix)")
 	cmd.Flags().String("template", "", "Path to prompt template file (overrides --kind when set)")
 	cmd.Flags().String("lang", "", "Prompt language (e.g. en, ru); overrides CODEX_PROMPT_LANG and defaults to en")
+	cmd.Flags().BoolVar(&infraUnhealthy, "infra-unhealthy", false, "Mark infrastructure as unhealthy in prompt context")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 

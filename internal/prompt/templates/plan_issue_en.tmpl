@@ -33,6 +33,13 @@ Available infrastructure and application services:
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
+{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+
+Attention: infrastructure is not ready (wait timeout/failed wait).
+- Capture this in the plan and add a separate sub-task for diagnosis and recovery steps.
+- In planning mode, do not change code or infrastructure.
+{{- end }}
+
 Core tools you can use:
 - kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress.
 - codexctl: manage environments and dev/ai slots (images/apply/manage-env/prompt).
