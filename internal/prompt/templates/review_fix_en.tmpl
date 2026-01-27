@@ -28,6 +28,24 @@ Available infrastructure and application services:
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
+{{- if .ReviewComments }}
+
+Unresolved review comments (not minimized):
+{{- range .ReviewComments }}
+- [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Reply guidance:
+- Use the comment ID (#ID) to reply to a specific review comment.
+  Example: `gh api -X POST repos/$GITHUB_REPOSITORY/pulls/comments/ID/replies -f body='...'`.
+{{- else }}
+
+No unresolved review comments (or they are minimized).
+{{- end }}
+
 Core tools you can use:
 - kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress.
 - codexctl: manage environments and dev/ai slots (images/apply/manage-env/prompt).

@@ -21,6 +21,23 @@
 - Исходный Issue‑планировщик (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
 - Фокусный Issue с комментарием (FOCUS_ISSUE_NUMBER): {{ envOr "FOCUS_ISSUE_NUMBER" "" }}
 
+{{- if .IssueComments }}
+
+Актуальные комментарии Issue (не скрытые):
+{{- range .IssueComments }}
+- [#{{ .ID }}] issue #{{ .IssueNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Инструкция по ответам:
+- В ответе с обновлением плана ссылайся на ID комментариев (#ID).
+{{- else }}
+
+Актуальных комментариев Issue нет (или они скрыты).
+{{- end }}
+
 {{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
 
 Дополнительный источник актуальной информации:

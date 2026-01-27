@@ -76,6 +76,27 @@ type CodexTimeouts struct {
 	Rollout string `yaml:"rollout,omitempty"`
 }
 
+// IssueComment represents a GitHub Issue comment attached to a prompt context.
+type IssueComment struct {
+	IssueNumber int    `yaml:"issueNumber,omitempty"`
+	ID          int    `yaml:"id,omitempty"`
+	Author      string `yaml:"author,omitempty"`
+	URL         string `yaml:"url,omitempty"`
+	Body        string `yaml:"body,omitempty"`
+	CreatedAt   string `yaml:"createdAt,omitempty"`
+}
+
+// ReviewComment represents a GitHub PR review comment attached to a prompt context.
+type ReviewComment struct {
+	PRNumber  int    `yaml:"prNumber,omitempty"`
+	ID        int    `yaml:"id,omitempty"`
+	Author    string `yaml:"author,omitempty"`
+	URL       string `yaml:"url,omitempty"`
+	Body      string `yaml:"body,omitempty"`
+	ThreadID  string `yaml:"threadId,omitempty"`
+	CreatedAt string `yaml:"createdAt,omitempty"`
+}
+
 // Link describes a named link to expose in comments/UI (title + path).
 type Link struct {
 	Title string `yaml:"title,omitempty"`
@@ -226,17 +247,19 @@ type LoadOptions struct {
 // TemplateContext represents the data exposed to Go-templates when rendering services.yaml
 // and other project templates (manifests, prompts, Codex config).
 type TemplateContext struct {
-	Env         string
-	Namespace   string
-	Project     string
-	ProjectRoot string
-	Slot        int
-	Now         time.Time
-	UserVars    env.Vars
-	EnvMap      env.Vars
-	Versions    map[string]string
-	BaseDomain  map[string]string
-	Codex       CodexConfig
+	Env            string
+	Namespace      string
+	Project        string
+	ProjectRoot    string
+	Slot           int
+	Now            time.Time
+	UserVars       env.Vars
+	EnvMap         env.Vars
+	Versions       map[string]string
+	BaseDomain     map[string]string
+	Codex          CodexConfig
+	IssueComments  []IssueComment
+	ReviewComments []ReviewComment
 }
 
 // rawHeader is a minimal struct used to extract top-level fields before templating.

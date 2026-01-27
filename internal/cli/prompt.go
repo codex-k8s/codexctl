@@ -117,6 +117,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 
 			applyIssueReasoningEffortOverride(cmd.Context(), logger, envName, issue, stackCfg, &ctxData)
+			applyIssueContext(cmd.Context(), logger, envName, issue, pr, ctxData.EnvMap["FOCUS_ISSUE_NUMBER"], &ctxData)
 
 			r := prompt.NewRenderer(stackCfg, ctxData)
 

@@ -33,6 +33,23 @@ Available infrastructure and application services:
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
+{{- if .IssueComments }}
+
+Current Issue comments (not minimized):
+{{- range .IssueComments }}
+- [#{{ .ID }}] issue #{{ .IssueNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Reply guidance:
+- Reference the comment IDs (#ID) in your plan recovery reply.
+{{- else }}
+
+No current Issue comments (or they are minimized).
+{{- end }}
+
 Core tools you can use:
 - kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress.
 - codexctl: manage environments and dev/ai slots (images/apply/manage-env/prompt).

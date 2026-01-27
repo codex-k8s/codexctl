@@ -22,6 +22,23 @@ Environment context:
 - Source planning Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
 - Focus Issue with the comment (FOCUS_ISSUE_NUMBER): {{ envOr "FOCUS_ISSUE_NUMBER" "" }}
 
+{{- if .IssueComments }}
+
+Current Issue comments (not minimized):
+{{- range .IssueComments }}
+- [#{{ .ID }}] issue #{{ .IssueNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Reply guidance:
+- Reference the comment IDs (#ID) in your plan update reply.
+{{- else }}
+
+No current Issue comments (or they are minimized).
+{{- end }}
+
 {{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
 
 Additional up-to-date information source:
