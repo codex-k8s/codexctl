@@ -62,21 +62,6 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
-			langFlag := cmd.Flag("lang").Value.String()
-			lang := langFlag
-			if lang == "" {
-				lang = os.Getenv("CODEX_PROMPT_LANG")
-			}
-			if lang == "" {
-				lang = "en"
-			}
-
-			if _, ok := inlineVars["CODEX_PROMPT_LANG"]; !ok && lang != "" {
-				inlineVars["CODEX_PROMPT_LANG"] = lang
-			}
-			if _, ok := inlineVars["PROMPT_LANG"]; !ok && lang != "" {
-				inlineVars["PROMPT_LANG"] = lang
-			}
 			if infraUnhealthy {
 				inlineVars["INFRA_UNHEALTHY"] = "1"
 			}
@@ -107,6 +92,23 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
 			if err != nil {
 				return err
+			}
+			langFlag := strings.TrimSpace(cmd.Flag("lang").Value.String())
+			lang := langFlag
+			if lang == "" {
+				lang = strings.TrimSpace(ctxData.EnvMap["CODEX_PROMPT_LANG"])
+			}
+			if lang == "" {
+				lang = strings.TrimSpace(stackCfg.Codex.PromptLang)
+			}
+			if lang == "" {
+				lang = "en"
+			}
+			if strings.TrimSpace(ctxData.EnvMap["CODEX_PROMPT_LANG"]) == "" {
+				ctxData.EnvMap["CODEX_PROMPT_LANG"] = lang
+			}
+			if strings.TrimSpace(ctxData.EnvMap["PROMPT_LANG"]) == "" {
+				ctxData.EnvMap["PROMPT_LANG"] = lang
 			}
 
 			envCfg, err := config.ResolveEnvironment(stackCfg, envName)
@@ -319,22 +321,6 @@ func newPromptConfigCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
-			langFlag := cmd.Flag("lang").Value.String()
-			lang := langFlag
-			if lang == "" {
-				lang = os.Getenv("CODEX_PROMPT_LANG")
-			}
-			if lang == "" {
-				lang = "en"
-			}
-
-			if _, ok := inlineVars["CODEX_PROMPT_LANG"]; !ok && lang != "" {
-				inlineVars["CODEX_PROMPT_LANG"] = lang
-			}
-			if _, ok := inlineVars["PROMPT_LANG"]; !ok && lang != "" {
-				inlineVars["PROMPT_LANG"] = lang
-			}
-
 			slot, err := cmd.Flags().GetInt("slot")
 			if err != nil {
 				return err
@@ -356,6 +342,23 @@ func newPromptConfigCommand(opts *Options) *cobra.Command {
 			stackCfg, ctx, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
 			if err != nil {
 				return err
+			}
+			langFlag := strings.TrimSpace(cmd.Flag("lang").Value.String())
+			lang := langFlag
+			if lang == "" {
+				lang = strings.TrimSpace(ctx.EnvMap["CODEX_PROMPT_LANG"])
+			}
+			if lang == "" {
+				lang = strings.TrimSpace(stackCfg.Codex.PromptLang)
+			}
+			if lang == "" {
+				lang = "en"
+			}
+			if strings.TrimSpace(ctx.EnvMap["CODEX_PROMPT_LANG"]) == "" {
+				ctx.EnvMap["CODEX_PROMPT_LANG"] = lang
+			}
+			if strings.TrimSpace(ctx.EnvMap["PROMPT_LANG"]) == "" {
+				ctx.EnvMap["PROMPT_LANG"] = lang
 			}
 
 			r := prompt.NewRenderer(stackCfg, ctx)
@@ -422,22 +425,6 @@ func newPromptRenderCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
-			langFlag := cmd.Flag("lang").Value.String()
-			lang := langFlag
-			if lang == "" {
-				lang = os.Getenv("CODEX_PROMPT_LANG")
-			}
-			if lang == "" {
-				lang = "en"
-			}
-
-			if _, ok := inlineVars["CODEX_PROMPT_LANG"]; !ok && lang != "" {
-				inlineVars["CODEX_PROMPT_LANG"] = lang
-			}
-			if _, ok := inlineVars["PROMPT_LANG"]; !ok && lang != "" {
-				inlineVars["PROMPT_LANG"] = lang
-			}
-
 			slot, err := cmd.Flags().GetInt("slot")
 			if err != nil {
 				return err
@@ -459,6 +446,23 @@ func newPromptRenderCommand(opts *Options) *cobra.Command {
 			stackCfg, ctx, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
 			if err != nil {
 				return err
+			}
+			langFlag := strings.TrimSpace(cmd.Flag("lang").Value.String())
+			lang := langFlag
+			if lang == "" {
+				lang = strings.TrimSpace(ctx.EnvMap["CODEX_PROMPT_LANG"])
+			}
+			if lang == "" {
+				lang = strings.TrimSpace(stackCfg.Codex.PromptLang)
+			}
+			if lang == "" {
+				lang = "en"
+			}
+			if strings.TrimSpace(ctx.EnvMap["CODEX_PROMPT_LANG"]) == "" {
+				ctx.EnvMap["CODEX_PROMPT_LANG"] = lang
+			}
+			if strings.TrimSpace(ctx.EnvMap["PROMPT_LANG"]) == "" {
+				ctx.EnvMap["PROMPT_LANG"] = lang
 			}
 
 			r := prompt.NewRenderer(stackCfg, ctx)

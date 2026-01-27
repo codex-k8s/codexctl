@@ -44,6 +44,8 @@ type CodexConfig struct {
 	// relative to the project root. The template is rendered with the same
 	// template context as services.yaml.
 	ConfigTemplate string `yaml:"configTemplate,omitempty"`
+	// PromptLang defines the default prompt language (e.g. "en" or "ru").
+	PromptLang string `yaml:"promptLang,omitempty"`
 	// Model is the default model identifier used by Codex.
 	Model string `yaml:"model,omitempty"`
 	// ModelReasoningEffort configures the reasoning effort for the Codex model.
