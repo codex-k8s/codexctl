@@ -121,6 +121,22 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			applyIssueReasoningEffortOverride(cmd.Context(), logger, envName, issue, stackCfg, &ctxData)
 			applyIssueContext(cmd.Context(), logger, envName, issue, pr, ctxData.EnvMap["FOCUS_ISSUE_NUMBER"], &ctxData)
 
+			resumeFlag, _ := cmd.Flags().GetBool("resume")
+			promptMode := strings.TrimSpace(ctxData.EnvMap["PROMPT_MODE"])
+			if promptMode == "" {
+				if resumeFlag {
+					promptMode = "short"
+				} else {
+					promptMode = "full"
+				}
+			}
+			if strings.TrimSpace(ctxData.EnvMap["PROMPT_CONTINUATION"]) != "" {
+				promptMode = "full"
+			}
+			if promptMode != "" {
+				ctxData.EnvMap["PROMPT_MODE"] = promptMode
+			}
+
 			r := prompt.NewRenderer(stackCfg, ctxData)
 
 			// Render Codex config and write it into ~/.codex/config.toml inside the Codex pod.
@@ -218,7 +234,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			switch kind {
 			case "":
 				kind = prompt.KindDevIssue
-			case prompt.KindDevIssue, prompt.KindReviewFix, prompt.KindPlanIssue, prompt.KindPlanReview, prompt.KindPlanReviewRecreate, prompt.KindRepairIssue:
+			case prompt.KindDevIssue, prompt.KindDevReview, prompt.KindPlanIssue, prompt.KindPlanReview, prompt.KindRepairIssue:
 				// valid
 			default:
 				return fmt.Errorf("unknown prompt kind %q", kind)
@@ -258,14 +274,13 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				return fmt.Errorf("upload prompt into pod: %w", err)
 			}
 
-			resume, _ := cmd.Flags().GetBool("resume")
 			execCmd := "" +
 				"if [ ! -s /tmp/codex_prompt.txt ]; then echo 'error: /tmp/codex_prompt.txt is empty' >&2; exit 1; fi; " +
 				"PROMPT_B64=$(base64 -w0 /tmp/codex_prompt.txt); " +
 				"PROMPT=$(printf %s \"$PROMPT_B64\" | base64 -d); " +
 				"echo \"debug: prompt length bytes=${#PROMPT}\" >&2; " +
 				"npx -y @openai/codex exec \"$PROMPT\" --cd /workspace --json"
-			if resume {
+			if resumeFlag {
 				execCmd = execCmd + " resume --last"
 			}
 
@@ -291,7 +306,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 	cmd.Flags().Int("issue", 0, "GitHub issue number associated with this run")
 	cmd.Flags().Int("pr", 0, "GitHub pull request number associated with this run")
 	cmd.Flags().Bool("resume", false, "Resume Codex session instead of starting a new one")
-	cmd.Flags().String("kind", "", "Builtin prompt kind (e.g. dev_issue, review_fix)")
+	cmd.Flags().String("kind", "", "Builtin prompt kind (e.g. dev_issue, dev_review)")
 	cmd.Flags().String("template", "", "Path to prompt template file (overrides --kind when set)")
 	cmd.Flags().String("lang", "", "Prompt language (e.g. en, ru); overrides CODEX_PROMPT_LANG and defaults to en")
 	cmd.Flags().BoolVar(&infraUnhealthy, "infra-unhealthy", false, "Mark infrastructure as unhealthy in prompt context")
@@ -507,7 +522,7 @@ func newPromptRenderCommand(opts *Options) *cobra.Command {
 
 	cmd.Flags().String("template", "", "Path to prompt template file")
 	cmd.Flags().String("out", "", "Output file path for rendered prompt")
-	cmd.Flags().String("kind", "", "Builtin prompt kind (e.g. dev_issue, review_fix)")
+	cmd.Flags().String("kind", "", "Builtin prompt kind (e.g. dev_issue, dev_review)")
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to use for rendering (dev, staging, ai)")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Namespace context for rendering")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")

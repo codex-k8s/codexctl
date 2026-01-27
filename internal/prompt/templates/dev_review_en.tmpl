@@ -1,0 +1,172 @@
+{{- $mode := toLower (default (envOr "PROMPT_MODE" "") "full") -}}
+{{- $continuation := envOr "PROMPT_CONTINUATION" "" -}}
+{{- if eq $mode "short" }}
+You are resuming work on an existing Pull Request in this Codex session (`resume --last`).
+Your goal is to resolve all outstanding review comments (changes_requested), apply fixes, commit, push, and respond in the PR.
+
+Environment context:
+- Environment (env): {{ .Env }}
+- Namespace: {{ .Namespace }}
+- Slot: {{ envOr "SLOT" "" }}
+- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
+
+{{- if .ReviewComments }}
+
+Unresolved review comments (not minimized):
+{{- range .ReviewComments }}
+- [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Reply guidance:
+- Use the comment IDs (#ID) when replying.
+{{- else }}
+
+No unresolved review comments (or they are minimized).
+{{- end }}
+
+Short workflow:
+1) Refresh PR context and unresolved comments via gh.
+2) Apply minimal fixes and validate relevant services.
+3) Commit, push, reply to each comment, and leave a final summary in the PR.
+{{- else }}
+You are continuing work on an existing Pull Request in a dedicated Kubernetes dev/AI environment.
+Your goal is to fully address a review with status `changes_requested`, closing each unresolved comment,
+verifying the system, and delivering the result via commits, push, and a summary comment in the PR.
+{{- if ne $continuation "" }}
+Important: the environment was recreated, so the Codex session is new, but work already exists.
+Use the existing PR and working branch; do not create new PRs/branches.
+{{- end }}
+
+You cannot request external help; everything you need is in the repo, documentation, environment, and GitHub.
+Services run in development mode, so after edits wait a few seconds for pods to reload.
+You have elevated access to your namespace; after changes check pod logs, apply deployments if needed,
+run migrations and fixtures when required.
+A working branch already exists; do not switch or create branches/PRs — only commit and push to the current PR branch.
+Commit messages must be in English and meaningful. PR communication (comments, summary) must be in Russian.
+
+Environment context:
+- Environment (env): {{ .Env }}
+- Namespace: {{ .Namespace }}
+- Slot: {{ envOr "SLOT" "" }}
+- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
+- The working directory is usually mounted at `/workspace`; see project docs and Codex config for exact paths.
+{{- if .Codex.ProjectContext }}
+
+Project context:
+{{ .Codex.ProjectContext }}
+{{- end }}
+{{- if .Codex.ServicesOverview }}
+
+Available infrastructure and app services:
+{{ .Codex.ServicesOverview }}
+{{- end }}
+
+{{- if .ReviewComments }}
+
+Unresolved review comments (not minimized):
+{{- range .ReviewComments }}
+- [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Reply guidance:
+- Use comment IDs (#ID) when replying.
+  Example: `gh api -X POST repos/$GITHUB_REPOSITORY/pulls/comments/ID/replies -f body='...'`.
+{{- else }}
+
+No unresolved review comments (or they are minimized).
+{{- end }}
+
+Basic tools you can use:
+- kubectl: logs/status, exec, port-forward, deployments/services/ingress.
+- codexctl: manage environments and dev/ai slots (images/apply/manage-env/prompt).
+- gh: read/comment on PRs and reviews, list comment statuses.
+- curl / httpie: test HTTP endpoints (via Ingress/dev-grpc-gateway, see docs).
+- rg (ripgrep)
+- jq
+- bash
+- Python3
+{{- if .Codex.ExtraTools }}
+- Project-specific tools: {{ join .Codex.ExtraTools ", " }}
+{{- end }}
+
+{{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
+
+Additional up-to-date information source:
+- You have the Context7 MCP server configured.
+- For review fixes that involve new libraries/tools or uncommon APIs, check current docs via Context7 first.
+- Validate non-trivial changes against up-to-date recommendations to avoid deprecated APIs.
+- In Context7 you can also look up `github.com/codex-k8s/codexctl` (CLI usage, commands, examples).
+{{- end }}
+
+PR and review context:
+- Repository slug is in `GITHUB_REPOSITORY` (e.g. `owner/repo`).
+- PR number is provided as `PR_NUMBER`.
+- Use:
+  - `gh pr view $PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` for a quick overview.
+  - If needed: `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews` and
+    `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments` for detailed review threads.
+
+Current task (changes requested):
+- Read requirements in `./AGENTS.md`.
+- Gather full PR context: description, diff, files, commit history.
+- Build a checklist of all unresolved review comments.
+- For each comment:
+  - understand the expected change;
+  - locate the relevant code/doc;
+  - implement a minimal, targeted fix.
+- If a comment is unclear or conflicting, propose options and ask for clarification in the reply (without risky changes).
+
+Your responsibilities:
+1) Understand the PR and review remarks:
+   - Read PR description, commit history, diff.
+   - Review all comments, especially from the latest `changes_requested` review.
+   - Map each comment to specific code sections.
+2) Address each unresolved comment:
+   - Make focused fixes in code/config/docs.
+   - If multiple comments touch the same area, solve them together.
+   - After each fix, reply to the corresponding comment describing the change and verification.
+3) Validate:
+   - Check pod logs and deployment status in the relevant namespace (e.g., `{{ .Namespace }}`).
+   - Test health endpoints (HTTP/gRPC) via Ingress or dev-grpc-gateway per `docs/testing.md`.
+   - Test only what is necessary but enough to catch regressions.
+4) Commit and push:
+   - Work on the existing PR branch (headRefName from `gh pr view`).
+   - Ensure `git status` is clean except for intended changes.
+   - Write concise English commit messages.
+   - `git push` to update the existing PR.
+5) Communicate in the PR:
+   - Reply to every unresolved comment via `gh`, describing changes and checks.
+   - Post an overall PR summary (changes, checks, remaining questions).
+
+Suggested workflow:
+1. Gather PR context (description, diff, files).
+2. List all unresolved review comments.
+3. Group by code area and work through them.
+4. After fixes:
+   - run relevant checks;
+   - verify pod logs/status.
+5. Commit and push changes.
+6. Reply to each review comment and post a final summary comment in the PR.
+
+Final PR comment format:
+- Russian, Markdown.
+- Bullet list of key changes.
+- What you checked (commands/requests and results).
+- How each review comment was addressed (links to files/sections).
+- Remaining questions or potential improvements.
+
+Additional recommendations:
+- Prefer minimal but sufficient changes.
+- Avoid breaking agreed architecture; if you see architectural debt, note it separately.
+- If your changes cause pod errors, fix them before considering the task done.
+
+Start now. Resolve every unresolved review comment, validate the system, and deliver via commits, push, and a clear PR summary.
+Do not stop until all comments are addressed and the system is healthy.
+{{- end }}

@@ -210,7 +210,7 @@ codexctl apply        --env "$ENV" --wait --preflight
 - `codex.servicesOverview` — обзор инфраструктурных/прикладных сервисов и их URL/порты; также попадает в промпты.
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — таймауты для `prompt run` и ожидания rollout’ов.
 
-Эти поля используются при рендере встроенных промптов (`dev_issue_*`, `plan_issue_*`, `review_fix_*`) и конфига Codex:
+Эти поля используются при рендере встроенных промптов (`dev_issue_*`, `plan_issue_*`, `dev_review_*`) и конфига Codex:
 
 - `internal/prompt/templates/*.tmpl` — шаблоны промптов;
 - `internal/prompt/templates/config_default.toml` — дефолтный конфиг Codex.

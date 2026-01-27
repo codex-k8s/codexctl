@@ -210,7 +210,7 @@ Configuration of the Codex agent integration:
 - `codex.servicesOverview` — overview of infrastructure/application services and their URLs/ports; also included in prompts.
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — timeouts for `prompt run` and waiting for rollouts.
 
-These fields are used when rendering built-in prompts (`dev_issue_*`, `plan_issue_*`, `review_fix_*`) and the Codex config:
+These fields are used when rendering built-in prompts (`dev_issue_*`, `plan_issue_*`, `dev_review_*`) and the Codex config:
 
 - `internal/prompt/templates/*.tmpl` — prompt templates;
 - `internal/prompt/templates/config_default.toml` — default Codex config.
