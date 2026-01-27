@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/codex-k8s/codexctl/internal/env"
+	"github.com/codex-k8s/codexctl/internal/promptctx"
 )
 
 // StackConfig represents the high-level description of a deployable stack.
@@ -74,27 +75,6 @@ type CodexTimeouts struct {
 	Exec string `yaml:"exec,omitempty"`
 	// Rollout is the timeout passed to "kubectl rollout status" (e.g. "1200s").
 	Rollout string `yaml:"rollout,omitempty"`
-}
-
-// IssueComment represents a GitHub Issue comment attached to a prompt context.
-type IssueComment struct {
-	IssueNumber int    `yaml:"issueNumber,omitempty"`
-	ID          int    `yaml:"id,omitempty"`
-	Author      string `yaml:"author,omitempty"`
-	URL         string `yaml:"url,omitempty"`
-	Body        string `yaml:"body,omitempty"`
-	CreatedAt   string `yaml:"createdAt,omitempty"`
-}
-
-// ReviewComment represents a GitHub PR review comment attached to a prompt context.
-type ReviewComment struct {
-	PRNumber  int    `yaml:"prNumber,omitempty"`
-	ID        int    `yaml:"id,omitempty"`
-	Author    string `yaml:"author,omitempty"`
-	URL       string `yaml:"url,omitempty"`
-	Body      string `yaml:"body,omitempty"`
-	ThreadID  string `yaml:"threadId,omitempty"`
-	CreatedAt string `yaml:"createdAt,omitempty"`
 }
 
 // Link describes a named link to expose in comments/UI (title + path).
@@ -258,8 +238,8 @@ type TemplateContext struct {
 	Versions       map[string]string
 	BaseDomain     map[string]string
 	Codex          CodexConfig
-	IssueComments  []IssueComment
-	ReviewComments []ReviewComment
+	IssueComments  []promptctx.IssueComment
+	ReviewComments []promptctx.ReviewComment
 }
 
 // rawHeader is a minimal struct used to extract top-level fields before templating.

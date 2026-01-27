@@ -9,6 +9,7 @@ import (
 
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/githubapi"
+	"github.com/codex-k8s/codexctl/internal/promptctx"
 )
 
 func applyIssueContext(
@@ -54,7 +55,7 @@ func applyIssueContext(
 		}
 	}
 
-	var issueComments []config.IssueComment
+	var issueComments []promptctx.IssueComment
 	for _, number := range issueNums {
 		comments, err := client.FetchIssueComments(ctx, number)
 		if err != nil {
@@ -62,7 +63,7 @@ func applyIssueContext(
 			continue
 		}
 		for _, c := range comments {
-			issueComments = append(issueComments, config.IssueComment{
+			issueComments = append(issueComments, promptctx.IssueComment{
 				IssueNumber: number,
 				ID:          c.ID,
 				Author:      c.Author,
@@ -80,9 +81,9 @@ func applyIssueContext(
 			logger.Warn("failed to fetch PR review comments", "pr", pr, "error", err)
 			return
 		}
-		var reviewComments []config.ReviewComment
+		var reviewComments []promptctx.ReviewComment
 		for _, c := range comments {
-			reviewComments = append(reviewComments, config.ReviewComment{
+			reviewComments = append(reviewComments, promptctx.ReviewComment{
 				PRNumber:  pr,
 				ID:        c.ID,
 				Author:    c.Author,

@@ -1,3 +1,5 @@
+// Package githubapi provides a simple GitHub API client using the GitHub CLI.
+// TODO: Replace this lightweight GraphQL client with a maintained Go GitHub SDK.
 package githubapi
 
 import (
@@ -35,89 +37,6 @@ func NewClient(logger *slog.Logger, token, repo string) (*Client, error) {
 		owner:  parts[0],
 		name:   parts[1],
 	}, nil
-}
-
-type IssueComment struct {
-	ID        int
-	Author    string
-	URL       string
-	Body      string
-	CreatedAt string
-}
-
-type ReviewComment struct {
-	ID        int
-	Author    string
-	URL       string
-	Body      string
-	ThreadID  string
-	CreatedAt string
-}
-
-type pageInfo struct {
-	HasNextPage bool   `json:"hasNextPage"`
-	EndCursor   string `json:"endCursor"`
-}
-
-type issueCommentsResponse struct {
-	Data struct {
-		Repository struct {
-			Issue struct {
-				Comments struct {
-					Nodes    []issueCommentNode `json:"nodes"`
-					PageInfo pageInfo           `json:"pageInfo"`
-				} `json:"comments"`
-			} `json:"issue"`
-		} `json:"repository"`
-	} `json:"data"`
-}
-
-type issueCommentNode struct {
-	DatabaseID      int    `json:"databaseId"`
-	Body            string `json:"body"`
-	URL             string `json:"url"`
-	CreatedAt       string `json:"createdAt"`
-	IsMinimized     bool   `json:"isMinimized"`
-	MinimizedReason string `json:"minimizedReason"`
-	Author          struct {
-		Login string `json:"login"`
-	} `json:"author"`
-}
-
-type reviewThreadsResponse struct {
-	Data struct {
-		Repository struct {
-			PullRequest struct {
-				ReviewThreads struct {
-					Nodes    []reviewThreadNode `json:"nodes"`
-					PageInfo pageInfo           `json:"pageInfo"`
-				} `json:"reviewThreads"`
-			} `json:"pullRequest"`
-		} `json:"repository"`
-	} `json:"data"`
-}
-
-type reviewThreadNode struct {
-	ID         string             `json:"id"`
-	IsResolved bool               `json:"isResolved"`
-	Comments   reviewCommentBlock `json:"comments"`
-}
-
-type reviewCommentBlock struct {
-	Nodes    []reviewCommentNode `json:"nodes"`
-	PageInfo pageInfo            `json:"pageInfo"`
-}
-
-type reviewCommentNode struct {
-	DatabaseID      int    `json:"databaseId"`
-	Body            string `json:"body"`
-	URL             string `json:"url"`
-	CreatedAt       string `json:"createdAt"`
-	IsMinimized     bool   `json:"isMinimized"`
-	MinimizedReason string `json:"minimizedReason"`
-	Author          struct {
-		Login string `json:"login"`
-	} `json:"author"`
 }
 
 func (c *Client) FetchIssueComments(ctx context.Context, number int) ([]IssueComment, error) {
