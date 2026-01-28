@@ -105,6 +105,7 @@ Your responsibilities:
    - Finish the implementation and PR first.
    - Then post a summary comment in the Issue with: done work, verification, and any questions or suggestions.
    - For `gh issue comment` and `gh pr create/edit/comment`, use `--body-file` (or a heredoc into a file) to preserve newlines; do not pass `\n` via `--body`.
+   - Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (e.g., `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
 
 PR description format:
 - English language, Markdown for GitHub.

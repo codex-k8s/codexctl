@@ -4,6 +4,7 @@
 You are resuming work on an existing Pull Request in this Codex session (`resume --last`).
 This review flow applies to both dev and repair PRs.
 Your goal is to address all outstanding review comments (changes_requested), apply fixes, commit, push, and respond in the PR.
+Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (e.g., `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
 
 Environment context:
 - Environment (env): {{ .Env }}
@@ -37,6 +38,7 @@ You are continuing work on an existing Pull Request in a dedicated Kubernetes de
 This review flow applies to both dev and repair PRs.
 Your goal is to fully address a review with status `changes_requested`, close each unresolved comment,
 verify the system, and deliver the result via commits, push, and a summary comment in the PR.
+Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (e.g., `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
 {{- if ne $continuation "" }}
 Important: the environment was recreated, so the Codex session is new, but work already exists.
 Treat this as a continuation: restore full context from Issues/PR/docs and apply review fixes.

@@ -64,6 +64,7 @@ Current task:
    - Commit in English, concise and meaningful.
    - Push and open a PR into main with a Russian title and description.
    - For `gh issue comment` and `gh pr create/edit/comment`, use `--body-file` (or a heredoc into a file) to preserve newlines; do not pass `\n` via `--body`.
+   - Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (e.g., `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
 
 PR description format:
 - Russian, Markdown.
