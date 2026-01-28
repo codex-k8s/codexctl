@@ -180,6 +180,11 @@ func (c *Client) runGraphQL(ctx context.Context, query string, vars map[string]a
 		if val == nil {
 			continue
 		}
+		switch v := val.(type) {
+		case int, int32, int64, uint, uint32, uint64, float32, float64, bool:
+			args = append(args, "-F", fmt.Sprintf("%s=%v", key, v))
+			continue
+		}
 		str := fmt.Sprintf("%v", val)
 		if str == "" {
 			continue

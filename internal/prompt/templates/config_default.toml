@@ -1,5 +1,5 @@
-model = "{{ default .Codex.Model \"gpt-5.2-codex\" }}"
-model_reasoning_effort = "{{ default .Codex.ModelReasoningEffort \"medium\" }}"
+model = "{{ default .Codex.Model "gpt-5.2-codex" }}"
+model_reasoning_effort = "{{ default .Codex.ModelReasoningEffort "medium" }}"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 model_verbosity = "low"
