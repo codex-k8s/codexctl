@@ -93,6 +93,9 @@ func NewStore(stackCfg *config.StackConfig, client *kube.Client, logger *slog.Lo
 
 // List returns all stored environment records.
 func (s *Store) List(ctx context.Context) ([]EnvRecord, error) {
+	if err := s.ensureNamespace(ctx); err != nil {
+		return nil, err
+	}
 	args := []string{"-n", s.namespace, "get", "configmap", "-o", "json"}
 	out, err := s.client.RunAndCapture(ctx, nil, args...)
 	if err != nil {
@@ -135,6 +138,9 @@ func (s *Store) List(ctx context.Context) ([]EnvRecord, error) {
 
 // UpdateAttributes updates issue/pr fields for a stored slot.
 func (s *Store) UpdateAttributes(ctx context.Context, slot int, issue int, pr int) error {
+	if err := s.ensureNamespace(ctx); err != nil {
+		return err
+	}
 	name := fmt.Sprintf("%s%d", s.prefix, slot)
 	patchData := map[string]string{}
 	if issue > 0 {
@@ -172,6 +178,10 @@ func (s *Store) AllocateSlot(
 
 	if max < 0 {
 		max = 0
+	}
+
+	if err := s.ensureNamespace(ctx); err != nil {
+		return zero, err
 	}
 
 	owner := strings.TrimSpace(baseCtx.EnvMap["GITHUB_RUN_ID"])
@@ -236,6 +246,10 @@ func (s *Store) AllocateSlot(
 func (s *Store) GarbageCollect(ctx context.Context, envName string, ttl time.Duration) ([]EnvRecord, error) {
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
+	}
+
+	if err := s.ensureNamespace(ctx); err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -305,6 +319,26 @@ func (s *Store) GarbageCollect(ctx context.Context, envName string, ttl time.Dur
 	}
 
 	return removed, nil
+}
+
+func (s *Store) ensureNamespace(ctx context.Context) error {
+	if s == nil || s.client == nil {
+		return fmt.Errorf("state store is not initialized")
+	}
+	if strings.TrimSpace(s.namespace) == "" {
+		return fmt.Errorf("state namespace is empty")
+	}
+	if err := s.client.RunRaw(ctx, nil, "get", "ns", s.namespace); err == nil {
+		return nil
+	}
+	if err := s.client.RunRaw(ctx, nil, "create", "ns", s.namespace); err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "alreadyexists") || strings.Contains(msg, "already exists") {
+			return nil
+		}
+		return fmt.Errorf("ensure state namespace %q: %w", s.namespace, err)
+	}
+	return nil
 }
 
 func buildSlotOrder(max int, prefer int) []int {
