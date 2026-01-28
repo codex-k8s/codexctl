@@ -182,8 +182,9 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 			}
 
 			client := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+			waitTimeoutResolved := resolveDeployWaitTimeout(stackCfg, waitTimeout, cmd.Flags().Changed("wait-timeout"))
 			for attempt := 1; attempt <= waitAttempts; attempt++ {
-				if err := waitForDeployments(cmd.Context(), client, ctxData.Namespace, requestTimeout, waitTimeout); err != nil {
+				if err := waitForDeployments(cmd.Context(), client, ctxData.Namespace, requestTimeout, waitTimeoutResolved); err != nil {
 					if attempt == waitAttempts {
 						return err
 					}
@@ -205,7 +206,7 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().IntVar(&waitRetries, "wait-retries", 3, "Number of wait retries")
 	cmd.Flags().DurationVar(&applyBackoff, "apply-backoff", 5*time.Second, "Initial backoff for apply retries")
 	cmd.Flags().DurationVar(&waitBackoff, "wait-backoff", 5*time.Second, "Initial backoff for wait retries")
-	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", "1200s", "kubectl wait timeout")
+	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", defaultDeployWaitTimeout, "kubectl wait timeout")
 	cmd.Flags().DurationVar(&requestTimeout, "request-timeout", 600*time.Second, "kubectl request-timeout")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
@@ -295,20 +296,21 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 			}
 
 			res, err := ensureReady(cmd.Context(), logger, opts, ensureReadyRequest{
-				envName:       opts.Env,
-				issue:         issue,
-				pr:            pr,
-				slot:          slot,
-				maxSlots:      maxSlots,
-				codeRootBase:  codeRootBase,
-				source:        source,
-				prepareImages: prepareImages,
-				doApply:       doApply,
-				forceApply:    forceApply,
-				waitTimeout:   waitTimeout,
-				waitSoftFail:  waitSoftFail,
-				inlineVars:    inlineVars,
-				varFiles:      varFiles,
+				envName:        opts.Env,
+				issue:          issue,
+				pr:             pr,
+				slot:           slot,
+				maxSlots:       maxSlots,
+				codeRootBase:   codeRootBase,
+				source:         source,
+				prepareImages:  prepareImages,
+				doApply:        doApply,
+				forceApply:     forceApply,
+				waitTimeout:    waitTimeout,
+				waitTimeoutSet: cmd.Flags().Changed("wait-timeout"),
+				waitSoftFail:   waitSoftFail,
+				inlineVars:     inlineVars,
+				varFiles:       varFiles,
 			})
 			if err != nil {
 				return err
@@ -356,7 +358,7 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().BoolVar(&prepareImages, "prepare-images", false, "Mirror external and build local images before apply")
 	cmd.Flags().BoolVar(&doApply, "apply", false, "Apply manifests for the ensured environment")
 	cmd.Flags().BoolVar(&forceApply, "force-apply", false, "Apply manifests even for existing environments")
-	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", "300s", "kubectl wait timeout for deployments")
+	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", defaultDeployWaitTimeout, "kubectl wait timeout for deployments")
 	cmd.Flags().BoolVar(&waitSoftFail, "wait-soft-fail", false, "Do not fail when deployment wait times out")
 	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")

@@ -77,6 +77,8 @@ type CodexTimeouts struct {
 	Exec string `yaml:"exec,omitempty"`
 	// Rollout is the timeout passed to "kubectl rollout status" (e.g. "1200s").
 	Rollout string `yaml:"rollout,omitempty"`
+	// DeployWait is the timeout used for "kubectl wait" after applying manifests.
+	DeployWait string `yaml:"deployWait,omitempty"`
 }
 
 // Link describes a named link to expose in comments/UI (title + path).

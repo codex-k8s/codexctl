@@ -29,20 +29,21 @@ type ensureSlotResult struct {
 }
 
 type ensureReadyRequest struct {
-	envName       string
-	issue         int
-	pr            int
-	slot          int
-	maxSlots      int
-	codeRootBase  string
-	source        string
-	prepareImages bool
-	doApply       bool
-	forceApply    bool
-	waitTimeout   string
-	waitSoftFail  bool
-	inlineVars    env.Vars
-	varFiles      []string
+	envName        string
+	issue          int
+	pr             int
+	slot           int
+	maxSlots       int
+	codeRootBase   string
+	source         string
+	prepareImages  bool
+	doApply        bool
+	forceApply     bool
+	waitTimeout    string
+	waitTimeoutSet bool
+	waitSoftFail   bool
+	inlineVars     env.Vars
+	varFiles       []string
 }
 
 type ensureReadyResult struct {
@@ -212,10 +213,7 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 			if rec.Namespace == "" {
 				logger.Info("skip wait: namespace is empty, resources may be cluster-scoped or namespaced explicitly in manifests")
 			} else {
-				waitTimeout := strings.TrimSpace(req.waitTimeout)
-				if waitTimeout == "" {
-					waitTimeout = "300s"
-				}
+				waitTimeout := resolveDeployWaitTimeout(stackCfg, req.waitTimeout, req.waitTimeoutSet)
 				logger.Info("waiting for deployments to become Available", "namespace", rec.Namespace, "timeout", waitTimeout)
 				if err := slotRes.store.kubeClient.WaitForDeployments(ctx, rec.Namespace, waitTimeout); err != nil {
 					if req.waitSoftFail {
