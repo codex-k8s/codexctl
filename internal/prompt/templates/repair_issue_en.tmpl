@@ -55,6 +55,7 @@ Current task:
 2) Fix the root cause:
    - Update code/manifests/scripts as needed.
    - Restart services or re-apply the environment as required.
+   - If you changed service code or containers, bump its version in `services.yaml` (patch level) so staging rebuilds and redeploys the image.
 3) Verify recovery:
    - Ensure critical services reach Ready/Available.
    - Test key endpoints via curl/httpie.
@@ -62,6 +63,7 @@ Current task:
    - Work in branch `codex/issue-$ISSUE_NUMBER`.
    - Commit in English, concise and meaningful.
    - Push and open a PR into main with a Russian title and description.
+   - For `gh issue comment` and `gh pr create/edit/comment`, use `--body-file` (or a heredoc into a file) to preserve newlines; do not pass `\n` via `--body`.
 
 PR description format:
 - Russian, Markdown.

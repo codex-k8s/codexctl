@@ -138,6 +138,7 @@ Your responsibilities:
    - Make focused fixes in code/config/docs.
    - If multiple comments touch the same area, solve them together.
    - After each fix, reply to the corresponding comment describing the change and verification.
+   - If you changed service code or containers, bump its version in `services.yaml` (patch level) so staging rebuilds and redeploys the image.
 3) Validate:
    - Check pod logs and deployment status in the relevant namespace (e.g., `{{ .Namespace }}`).
    - Test health endpoints (HTTP/gRPC) via Ingress or dev-grpc-gateway per `docs/testing.md`.
@@ -150,6 +151,7 @@ Your responsibilities:
 5) Communication:
    - Finish the fixes and push first.
    - Then reply to each unresolved comment and post a final PR summary with checks and remaining questions (if any).
+   - For `gh pr comment`, use `--body-file` (or a heredoc into a file) to preserve newlines; do not pass `\n` via `--body`.
 
 Final PR comment format:
 - Russian, Markdown.
