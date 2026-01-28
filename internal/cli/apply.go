@@ -79,7 +79,7 @@ func newApplyCommand(opts *Options) *cobra.Command {
 }
 
 // applyStack runs the core apply logic shared between the "apply" command and
-// higher-level helpers such as "manage-env ensure-ready".
+// higher-level helpers such as "ci ensure-ready".
 func applyStack(
 	ctx context.Context,
 	logger *slog.Logger,

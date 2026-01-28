@@ -63,17 +63,13 @@ func newRootCommand(opts *Options, logger *slog.Logger) *cobra.Command {
 	cmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 
 	cmd.AddCommand(
-		newRenderCommand(opts),
 		newApplyCommand(opts),
 		newCICommand(opts),
 		newImagesCommand(opts),
-		newDestroyCommand(opts),
-		newStatusCommand(opts),
 		newManageEnvCommand(opts),
 		newPromptCommand(opts),
 		newPlanCommand(opts),
 		newPRCommand(opts),
-		newDoctorCommand(opts),
 	)
 
 	return cmd

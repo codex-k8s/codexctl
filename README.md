@@ -71,7 +71,7 @@ This file is the single source of truth for `codexctl`, GitHub Actions and dev-A
 
 The same context is used by:
 
-- manifest rendering (`codexctl render/apply`);
+- manifest rendering (`codexctl apply` / `codexctl ci apply`);
 - built-in prompt templates (`internal/prompt/templates/*.tmpl`);
 - the Codex config template (`internal/prompt/templates/config_default.toml` or an overridden one).
 
@@ -84,7 +84,7 @@ The same context is used by:
 - `ai` — dev-AI slots: isolated namespaces of the form `<project>-dev-<slot>` (for example, `codex-project-dev-<slot>`),
   with domains like `dev-<slot>.staging.<domain>` where Codex agents work on issues/PRs.
 
-Slots (`slot`) are numeric identifiers of dev-AI environments managed by the `manage-env` command. For each
+Slots (`slot`) are numeric identifiers of dev-AI environments managed by `codexctl ci ensure-slot/ensure-ready`. For each
 slot `codexctl` creates and maintains:
 
 - a dedicated namespace;
@@ -97,7 +97,7 @@ The basic idea is:
 
 - you create an Issue in the repository and add a label to it, for example `[ai-plan]` for planning
   or `[ai-dev]` for development;
-- a GitHub Actions workflow reacts to this label, calls `codexctl manage-env ensure-slot/ensure-ready --env ai ...`
+- a GitHub Actions workflow reacts to this label, calls `codexctl ci ensure-slot/ensure-ready --env ai ...`
   and deploys a full stack of project infrastructure and services into a separate namespace;
 - in this namespace a `codex` Pod with a Codex agent is started, and `codexctl prompt run` feeds it a prompt
   of the required type (`kind=plan_issue` or `kind=dev_issue`, languages `ru`/`en`).
@@ -348,25 +348,9 @@ services:
 
 ---
 
-## 🛠️ 4. Rendering and applying manifests
+## 🛠️ 4. Applying manifests
 
-### 🧾 4.1. `codexctl render`
-
-```bash
-codexctl render \
-  --env staging \
-  --slot 0 \
-  --stdout
-```
-
-- loads `services.yaml`;
-- builds the context (`Env`, `Namespace`, `Project`, `Slot`, `EnvMap`, etc.);
-- renders all infrastructure and service manifests into a single YAML;
-- writes the result to stdout or a file (`--output`).
-
-Useful for debugging templates without applying them to the cluster.
-
-### ☸️ 4.2. `codexctl apply`
+### ☸️ 4.1. `codexctl apply`
 
 ```bash
 codexctl apply \
@@ -378,7 +362,7 @@ codexctl apply \
 
 This command:
 
-- renders the stack the same way as `render`;
+- renders the stack;
 - runs preflight checks (if the `--preflight` flag is set);
 - applies manifests via `kubectl apply`;
 - runs `afterApply` hooks (for example, waiting for rollouts);
@@ -400,12 +384,7 @@ This command:
 - Purpose: render and apply the stack to Kubernetes.
 - Typical example — see section 4.2.
 
-### 🧾 5.3. `render`
-
-- Purpose: render manifests without applying them.
-- Useful for CI checks and local template debugging.
-
-### 🖼️ 5.4. `images`
+### 🖼️ 5.3. `images`
 
 Subcommands:
 
@@ -421,47 +400,15 @@ Subcommands:
   codexctl images build --env staging
   ```
 
-### 🗑️ 5.5. `destroy`
+### 🎛️ 5.4. `manage-env`
 
-- Purpose: delete stack resources (infrastructure/services) from the cluster.
-- Use carefully, typically in cleanup scenarios for dev/dev-AI environments.
-
-### 📊 5.6. `status`
-
-- Purpose: show a summary of stack state (environments, slots, registry).
-
-### 🎛️ 5.7. `manage-env`
-
-Command group for working with dev-AI slots (`env=ai`):
-
-- `manage-env ensure-slot` — find or create a slot for an issue/PR:
-
-  ```bash
-  codexctl manage-env ensure-slot --env ai --issue 123 --output json
-  ```
-
-- `manage-env ensure-ready` — prepare a slot environment:
-
-  ```bash
-  codexctl manage-env ensure-ready \
-    --env ai \
-    --slot 1 \
-    --issue 123 \
-    --code-root-base "/srv/codex/envs" \
-    --source "." \
-    --prepare-images \
-    --apply \
-    --output json
-  ```
-
-  This mirrors external images, builds images, runs `apply` and performs extra setup (secrets, ingress).
+Command group for dev-AI slot metadata and cleanup (`env=ai`):
 
 - `manage-env cleanup` — delete a slot environment and its state records.
-- `manage-env gc` — garbage collection for old slots.
-- `manage-env resolve` — find slot/namespace by issue/PR.
 - `manage-env set` — set slot ↔ issue/PR mappings.
+- `manage-env comment` — render environment links for PR/Issue comments.
 
-### 🧠 5.8. `prompt`
+### 🧠 5.5. `prompt`
 
 Commands for working with Codex agent prompts:
 
@@ -478,10 +425,7 @@ Commands for working with Codex agent prompts:
   This uses built-in prompt templates (`internal/prompt/templates/dev_issue_*.tmpl`) and the `services.yaml` context
   (`codex.extraTools`, `codex.projectContext`, `codex.servicesOverview`, `codex.links`).
 
-- `prompt config` — render the Codex config (from `codex.configTemplate` or `config_default.toml`).
-- `prompt render` — render an arbitrary prompt template (by path or by kind/lang).
-
-### 🧭 5.9. `plan`
+### 🧭 5.6. `plan`
 
 Commands for working with plans and related task structures:
 
@@ -498,20 +442,11 @@ Commands for working with plans and related task structures:
   - the `[ai-plan]` label on the root planning Issue;
   - the `AI-PLAN-PARENT: #<root>` marker in child Issues.
 
-- `plan list-children` — list all child Issues for a planning Issue:
-
-  ```bash
-  codexctl plan list-children \
-    --root 100 \
-    --repo owner/codex-project \
-    --output json
-  ```
-
 This mechanism lets you build a tree of tasks: one planning Issue with `[ai-plan]` describes the architecture and phases,
-and child Issues with `AI-PLAN-PARENT: #<root>` are implemented in separate dev-AI slots (`[ai-dev]`) via `manage-env`
+and child Issues with `AI-PLAN-PARENT: #<root>` are implemented in separate dev-AI slots (`[ai-dev]`) via `ci ensure-ready`
 and `prompt run`.
 
-### 🔄 5.10. `pr review-apply`
+### 🔄 5.7. `pr review-apply`
 
 - Automatically applies changes made by a Codex agent in a dev-AI environment to a PR:
 
@@ -528,10 +463,6 @@ and `prompt run`.
   - syncs the slot's working directory;
   - runs `git add/commit/push` to the PR branch;
   - leaves a comment in the PR with links to the environment.
-
-### 🩺 5.11. `doctor`
-
-- Environment diagnostics (`kubectl`, access to registry, basic checks).
 
 ---
 
@@ -607,8 +538,8 @@ jobs:
 
 High-level flow:
 
-1. `manage-env ensure-slot --env ai --issue <N>` — pick/create a slot.
-2. `manage-env ensure-ready --env ai --slot <SLOT> --prepare-images --apply` — deploy infrastructure and services.
+1. `ci ensure-slot --env ai --issue <N>` — pick/create a slot.
+2. `ci ensure-ready --env ai --slot <SLOT> --prepare-images --apply` — deploy infrastructure and services.
 3. `prompt run --env ai --slot <SLOT> --kind dev_issue` — start a Codex agent.
 4. `manage-env cleanup --env ai --issue <N>` — clean up the slot (if needed).
 

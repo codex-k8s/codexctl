@@ -3,79 +3,15 @@ package cli
 import (
 	"context"
 	"log/slog"
-	"time"
-
-	"github.com/spf13/cobra"
 
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/engine"
-	"github.com/codex-k8s/codexctl/internal/env"
 	"github.com/codex-k8s/codexctl/internal/hooks"
 	"github.com/codex-k8s/codexctl/internal/kube"
 )
 
-// newDestroyCommand creates the "destroy" subcommand that deletes resources for an environment.
-func newDestroyCommand(opts *Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "destroy",
-		Short: "Delete resources created from services.yaml",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			logger := LoggerFromContext(cmd.Context())
-
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
-			if err != nil {
-				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
-			}
-
-			slot, err := cmd.Flags().GetInt("slot")
-			if err != nil {
-				return err
-			}
-
-			loadOpts := config.LoadOptions{
-				Env:       opts.Env,
-				Namespace: opts.Namespace,
-				Slot:      slot,
-				UserVars:  inlineVars,
-				VarFiles:  varFiles,
-			}
-
-			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
-			if err != nil {
-				return err
-			}
-
-			envCfg, err := config.ResolveEnvironment(stackCfg, opts.Env)
-			if err != nil {
-				return err
-			}
-
-			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
-			defer cancel()
-
-			return destroyStack(ctx, logger, stackCfg, ctxData, envCfg, opts.Env)
-		},
-	}
-
-	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to destroy (dev, staging, ai)")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Namespace override for resources")
-	cmd.Flags().Bool("yes", false, "Do not prompt for confirmation")
-	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
-	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
-	cmd.Flags().Int("slot", 0, "Slot number for slot-based environments (e.g. ai)")
-	_ = cmd.MarkFlagRequired("env")
-
-	return cmd
-}
-
-// destroyStack runs the core destroy logic shared between the "destroy" command
-// and higher-level helpers such as "manage-env cleanup".
+// destroyStack runs the core destroy logic shared by higher-level helpers
+// such as "manage-env cleanup".
 func destroyStack(
 	ctx context.Context,
 	logger *slog.Logger,
