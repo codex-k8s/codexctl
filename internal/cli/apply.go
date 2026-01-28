@@ -62,7 +62,7 @@ func newApplyCommand(opts *Options) *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
 			defer cancel()
 
-			return applyStack(ctx, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, wait)
+			return applyStack(ctx, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, wait, false)
 		},
 	}
 
@@ -89,8 +89,10 @@ func applyStack(
 	envCfg config.Environment,
 	preflight bool,
 	wait bool,
+	machineOutput bool,
 ) error {
 	kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+	kubeClient.StdoutToStderr = machineOutput
 
 	// Ensure target namespace exists before running hooks or applying manifests.
 	if ns := strings.TrimSpace(ctxData.Namespace); ns != "" {

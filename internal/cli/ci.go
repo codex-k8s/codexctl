@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -149,7 +150,7 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 			var applyErr error
 			for attempt := 1; attempt <= attempts; attempt++ {
 				ctxApply, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
-				applyErr = applyStack(ctxApply, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, false)
+				applyErr = applyStack(ctxApply, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, false, false)
 				cancel()
 				if applyErr == nil {
 					break
@@ -235,14 +236,16 @@ func newCIEnsureSlotCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
+			machineOutput := strings.ToLower(output) != "plain"
 			res, err := ensureSlot(cmd.Context(), logger, opts, ensureSlotRequest{
-				envName:    opts.Env,
-				issue:      issue,
-				pr:         pr,
-				slot:       slot,
-				maxSlots:   max,
-				inlineVars: inlineVars,
-				varFiles:   varFiles,
+				envName:       opts.Env,
+				issue:         issue,
+				pr:            pr,
+				slot:          slot,
+				maxSlots:      max,
+				machineOutput: machineOutput,
+				inlineVars:    inlineVars,
+				varFiles:      varFiles,
 			})
 			if err != nil {
 				return err
@@ -255,7 +258,7 @@ func newCIEnsureSlotCommand(opts *Options) *cobra.Command {
 	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number selector")
 	cmd.Flags().IntVar(&pr, "pr", 0, "PR number selector")
 	cmd.Flags().IntVar(&max, "max", 0, "Maximum number of slots (0 means unlimited)")
-	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
+	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json|kv")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 
@@ -295,6 +298,7 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				varFiles = append(varFiles, varFile)
 			}
 
+			machineOutput := strings.ToLower(output) != "plain"
 			res, err := ensureReady(cmd.Context(), logger, opts, ensureReadyRequest{
 				envName:        opts.Env,
 				issue:          issue,
@@ -309,6 +313,7 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				waitTimeout:    waitTimeout,
 				waitTimeoutSet: cmd.Flags().Changed("wait-timeout"),
 				waitSoftFail:   waitSoftFail,
+				machineOutput:  machineOutput,
 				inlineVars:     inlineVars,
 				varFiles:       varFiles,
 			})
@@ -316,7 +321,7 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				return err
 			}
 
-			switch output {
+			switch strings.ToLower(output) {
 			case "json":
 				type out struct {
 					Slot       int    `json:"slot"`
@@ -335,6 +340,15 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 					InfraReady: res.infraReady,
 				})
 				fmt.Println(string(payload))
+			case "kv":
+				fmt.Printf("slot=%d\nnamespace=%s\nenv=%s\ncreated=%t\nrecreated=%t\ninfraReady=%t\n",
+					res.record.Slot,
+					res.record.Namespace,
+					res.record.Env,
+					res.created,
+					res.recreated,
+					res.infraReady,
+				)
 			default:
 				logger.Info("environment ensured ready",
 					"slot", res.record.Slot,
@@ -360,7 +374,7 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().BoolVar(&forceApply, "force-apply", false, "Apply manifests even for existing environments")
 	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", defaultDeployWaitTimeout, "kubectl wait timeout for deployments")
 	cmd.Flags().BoolVar(&waitSoftFail, "wait-soft-fail", false, "Do not fail when deployment wait times out")
-	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
+	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json|kv")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 

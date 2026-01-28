@@ -75,6 +75,8 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 				}
 				payload, _ := json.Marshal(out{Root: root, Focus: issue})
 				fmt.Println(string(payload))
+			case "kv":
+				fmt.Printf("root=%d\nfocus=%d\n", root, issue)
 			default:
 				logger.Info("resolved root planning issue",
 					"focus", issue,
@@ -89,7 +91,7 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 	cmd.Flags().IntVar(&issue, "issue", 0, "Focus issue number to resolve the root planner for (required)")
 	_ = cmd.MarkFlagRequired("issue")
 	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository slug owner/repo (defaults to GITHUB_REPOSITORY)")
-	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json")
+	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json|kv")
 
 	return cmd
 }

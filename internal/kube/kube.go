@@ -16,6 +16,8 @@ import (
 type Client struct {
 	Kubeconfig string
 	Context    string
+	// StdoutToStderr redirects kubectl stdout to stderr (useful for machine-readable outputs).
+	StdoutToStderr bool
 }
 
 // NewClient constructs a new Kubernetes client wrapper.
@@ -111,7 +113,11 @@ func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) e
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
-	cmd.Stdout = os.Stdout
+	if c != nil && c.StdoutToStderr {
+		cmd.Stdout = os.Stderr
+	} else {
+		cmd.Stdout = os.Stdout
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
 

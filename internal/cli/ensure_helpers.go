@@ -13,13 +13,14 @@ import (
 )
 
 type ensureSlotRequest struct {
-	envName    string
-	issue      int
-	pr         int
-	slot       int
-	maxSlots   int
-	inlineVars env.Vars
-	varFiles   []string
+	envName       string
+	issue         int
+	pr            int
+	slot          int
+	maxSlots      int
+	machineOutput bool
+	inlineVars    env.Vars
+	varFiles      []string
 }
 
 type ensureSlotResult struct {
@@ -42,6 +43,7 @@ type ensureReadyRequest struct {
 	waitTimeout    string
 	waitTimeoutSet bool
 	waitSoftFail   bool
+	machineOutput  bool
 	inlineVars     env.Vars
 	varFiles       []string
 }
@@ -73,6 +75,9 @@ func ensureSlot(ctx context.Context, logger *slog.Logger, opts *Options, req ens
 	envStore, err := loadEnvSlotStore(opts.ConfigPath, envName, loadOpts, logger)
 	if err != nil {
 		return res, err
+	}
+	if envStore.kubeClient != nil {
+		envStore.kubeClient.StdoutToStderr = req.machineOutput
 	}
 
 	ctxList, cancelList := context.WithTimeout(ctx, 30*time.Second)
@@ -112,13 +117,14 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 	}
 
 	slotRes, err := ensureSlot(ctx, logger, opts, ensureSlotRequest{
-		envName:    req.envName,
-		issue:      req.issue,
-		pr:         req.pr,
-		slot:       req.slot,
-		maxSlots:   req.maxSlots,
-		inlineVars: req.inlineVars,
-		varFiles:   req.varFiles,
+		envName:       req.envName,
+		issue:         req.issue,
+		pr:            req.pr,
+		slot:          req.slot,
+		maxSlots:      req.maxSlots,
+		machineOutput: req.machineOutput,
+		inlineVars:    req.inlineVars,
+		varFiles:      req.varFiles,
 	})
 	if err != nil {
 		return res, err
@@ -129,6 +135,10 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 	envName := req.envName
 	if envName == "" {
 		envName = "ai"
+	}
+
+	if slotRes.store != nil && slotRes.store.kubeClient != nil {
+		slotRes.store.kubeClient.StdoutToStderr = req.machineOutput
 	}
 
 	recreated := false
@@ -206,7 +216,7 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 			ctxApply, cancelApply := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancelApply()
 
-			if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, slotRes.store.envCfg, true, false); err != nil {
+			if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, slotRes.store.envCfg, true, false, req.machineOutput); err != nil {
 				return res, err
 			}
 

@@ -385,6 +385,8 @@ func printResolveOutput(rec state.EnvRecord, output string, logger *slog.Logger)
 		}
 		payload, _ := json.Marshal(out{Slot: rec.Slot, Namespace: rec.Namespace, Env: rec.Env})
 		fmt.Println(string(payload))
+	case "kv":
+		fmt.Printf("slot=%d\nnamespace=%s\nenv=%s\n", rec.Slot, rec.Namespace, rec.Env)
 	default:
 		logger.Info("resolved slot",
 			"slot", rec.Slot,
