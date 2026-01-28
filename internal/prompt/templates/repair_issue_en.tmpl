@@ -30,6 +30,7 @@ Core tools you can use:
 - codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt); render/apply templated manifests from `services.yaml`.
 - `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
 - gh: read/comment Issues/PRs, gather context, open PRs.
+- gh credentials: token is in CODEX_GH_PAT, username in CODEX_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: test HTTP endpoints of the environment.
 - rg (ripgrep): search the codebase.
 - jq: parse JSON.
