@@ -14,6 +14,7 @@ Environment context:
 - Environment (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
 - Slot: {{ envOr "SLOT" "" }}
+- Source Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
 - The working directory inside the container is mounted to the project source code.
 {{- if .Codex.ProjectContext }}
 
@@ -51,8 +52,9 @@ No current Issue comments (or they are minimized).
 {{- end }}
 
 Core tools you can use:
-- kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress.
-- codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt).
+- kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Diagnostics only; do not apply manifests with kubectl.
+- codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt); render/apply templated manifests from `services.yaml`.
+- `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
 - gh: read/comment on Issues/PRs, collect review context.
 - curl / httpie: test HTTP endpoints of the environment.
 - rg (ripgrep): search through the codebase.
@@ -63,13 +65,13 @@ Core tools you can use:
 - Additional project-specific tools: {{ join .Codex.ExtraTools ", " }}
 {{- end }}
 
-{{- if ne (envOr "CONTEXT7_API_KEY" "") "" }}
+{{- if ne (envOr "CONTEXT7_API_KEY" "" ) "" }}
 
 Additional up-to-date information source:
 - You have the Context7 MCP server configured.
 - When choosing libraries or using external dependencies and tools, first consult the latest documentation via Context7, then apply it in the code.
 - For any non-trivial APIs, SDKs, CLI tools and libraries, especially when there are no clear examples in the repo, query Context7 first and only then implement your solution.
-- In Context7 you can also look up `github.com/codex-k8s/codexctl` (CLI usage, commands, examples).
+- In Context7 you can also look up `github.com/codex-k8s/codexctl` (CLI usage, commands, examples). Use the apply/ci ensure-ready examples to confirm correct usage.
 {{- end }}
 
 Current task (issue-based work):
@@ -78,9 +80,8 @@ Current task (issue-based work):
 - Get full issue context via GitHub CLI:
   - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
 - Study the issue description, comments and labels, plus any project documentation in `docs/*.md` (if present) and relevant parts of the code.
-- If the requirements are insufficient, write clarification questions and add a comment to the Issue (via `gh`) and then finish the run; if you
-  can do part of the work, implement as much as possible now and describe any open questions and trade-offs in the final report under
-  a “Questions for clarification” section. If you can fully complete the task immediately, do so and provide a final report in your last reply.
+- If requirements are insufficient but you can still move forward, proceed with the best reasonable interpretation and list questions/assumptions in the final Issue comment.
+- If you are completely blocked, add a clarification comment in the Issue and stop the run.
 - Run a local check using kubectl (logs of key service pods) and verify affected endpoints via curl/httpie.
 
 Your responsibilities:
@@ -98,11 +99,9 @@ Your responsibilities:
    - Make commits with short, meaningful messages in English.
    - Push the branch and open a Pull Request into the main branch.
    - Write the PR title and description in English, briefly and to the point, listing the changes and how to verify them.
-
-Additional recommendations:
-- Work iteratively: small steps, frequent checks, minimal rollbacks.
-- If requirements are not fully clear, formulate specific questions and, where possible, propose several implementation options.
-- Monitor the health of the environment: fix problems you introduce yourself, or explicitly document remaining risks and trade-offs in the PR description.
+5) Communication:
+   - Finish the implementation and PR first.
+   - Then post a summary comment in the Issue with: done work, verification, and any questions or suggestions.
 
 PR description format:
 - English language, Markdown for GitHub.

@@ -26,8 +26,9 @@ Diagnose and restore the infrastructure first, then proceed with any remaining t
 {{- end }}
 
 Core tools you can use:
-- kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress.
-- codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt).
+- kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Diagnostics only; do not apply manifests with kubectl.
+- codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt); render/apply templated manifests from `services.yaml`.
+- `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
 - gh: read/comment Issues/PRs, gather context, open PRs.
 - curl / httpie: test HTTP endpoints of the environment.
 - rg (ripgrep): search the codebase.
@@ -43,7 +44,7 @@ Core tools you can use:
 Additional up-to-date information source:
 - You have the Context7 MCP server configured.
 - If recovery requires uncommon APIs/tools and the repo lacks examples, consult Context7 first.
-- In Context7 you can also look up `github.com/codex-k8s/codexctl` (CLI usage, commands, examples).
+- In Context7 you can also look up `github.com/codex-k8s/codexctl` (CLI usage, commands, examples). Use the apply/ci ensure-ready examples to confirm correct usage.
 {{- end }}
 
 Current task:
