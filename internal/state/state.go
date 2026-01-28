@@ -328,10 +328,10 @@ func (s *Store) ensureNamespace(ctx context.Context) error {
 	if strings.TrimSpace(s.namespace) == "" {
 		return fmt.Errorf("state namespace is empty")
 	}
-	if err := s.client.RunRaw(ctx, nil, "get", "ns", s.namespace); err == nil {
+	if _, err := s.client.RunAndCapture(ctx, nil, "get", "ns", s.namespace); err == nil {
 		return nil
 	}
-	if err := s.client.RunRaw(ctx, nil, "create", "ns", s.namespace); err != nil {
+	if _, err := s.client.RunAndCapture(ctx, nil, "create", "ns", s.namespace); err != nil {
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "alreadyexists") || strings.Contains(msg, "already exists") {
 			return nil
