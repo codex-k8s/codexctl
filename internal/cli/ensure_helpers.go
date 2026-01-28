@@ -136,7 +136,7 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 		ctxNs, cancelNs := context.WithTimeout(ctx, 15*time.Second)
 		defer cancelNs()
 		nsArgs := []string{"get", "ns", rec.Namespace}
-		if err := slotRes.store.kubeClient.RunRaw(ctxNs, nil, nsArgs...); err != nil {
+		if _, err := slotRes.store.kubeClient.RunAndCapture(ctxNs, nil, nsArgs...); err != nil {
 			logger.Warn("namespace missing for existing environment; resources will be recreated",
 				"namespace", rec.Namespace,
 				"slot", rec.Slot,
