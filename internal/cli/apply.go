@@ -121,7 +121,7 @@ func applyStack(
 		if err := hookExec.RunPreflightBasic(ctx); err != nil {
 			return err
 		}
-		if err := runDoctorChecks(ctx, logger, stackCfg, ctxData, envCfg, envName); err != nil {
+		if err := runDoctorChecks(ctx, logger, doctorParams{stackCfg: stackCfg, envName: envName}); err != nil {
 			return err
 		}
 	}
@@ -130,22 +130,10 @@ func applyStack(
 	if err := hookExec.RunSteps(ctx, stackCfg.Hooks.BeforeAll, hookCtx); err != nil {
 		return err
 	}
-	for _, infra := range stackCfg.Infrastructure {
-		if err := hookExec.RunSteps(ctx, infra.Hooks.BeforeApply, hookCtx); err != nil {
-			return err
-		}
-	}
-	for _, svc := range stackCfg.Services {
-		enabled, err := serviceEnabled(svc, ctxData)
-		if err != nil {
-			return err
-		}
-		if !enabled {
-			continue
-		}
-		if err := hookExec.RunSteps(ctx, svc.Hooks.BeforeApply, hookCtx); err != nil {
-			return err
-		}
+	stageCtx := hookStageContext{stackCfg: stackCfg, ctxData: ctxData, hookCtx: hookCtx}
+	beforeStage := hookStage{infra: infraBeforeApply, services: serviceBeforeApply}
+	if err := runHookStage(ctx, hookExec, stageCtx, beforeStage); err != nil {
+		return err
 	}
 
 	logger.Info("applying manifests", "env", envName, "namespace", ctxData.Namespace)
@@ -187,22 +175,9 @@ func applyStack(
 	}
 
 	// Infrastructure/service hooks and stack-level hooks after apply.
-	for _, infra := range stackCfg.Infrastructure {
-		if err := hookExec.RunSteps(ctx, infra.Hooks.AfterApply, hookCtx); err != nil {
-			return err
-		}
-	}
-	for _, svc := range stackCfg.Services {
-		enabled, err := serviceEnabled(svc, ctxData)
-		if err != nil {
-			return err
-		}
-		if !enabled {
-			continue
-		}
-		if err := hookExec.RunSteps(ctx, svc.Hooks.AfterApply, hookCtx); err != nil {
-			return err
-		}
+	afterStage := hookStage{infra: infraAfterApply, services: serviceAfterApply}
+	if err := runHookStage(ctx, hookExec, stageCtx, afterStage); err != nil {
+		return err
 	}
 	if err := hookExec.RunSteps(ctx, stackCfg.Hooks.AfterAll, hookCtx); err != nil {
 		return err

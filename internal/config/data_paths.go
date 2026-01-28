@@ -3,6 +3,8 @@ package config
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/codex-k8s/codexctl/internal/stringsutil"
 )
 
 // DataPaths describes how to locate data directories for services (e.g. postgres/redis).
@@ -60,26 +62,6 @@ func ResolveDataPaths(cfg *StackConfig) ResolvedDataPaths {
 
 	res.Root = root
 	res.EnvDir = envDir
-	res.Paths = dedupeStrings(paths)
+	res.Paths = stringsutil.DedupeStrings(paths)
 	return res
-}
-
-func dedupeStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-	return out
 }

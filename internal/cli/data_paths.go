@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/codex-k8s/codexctl/internal/config"
+	"github.com/codex-k8s/codexctl/internal/stringsutil"
 )
 
 type dataPathAction int
@@ -66,7 +67,7 @@ func dataPathsTargets(resolved config.ResolvedDataPaths) []string {
 		paths = append(paths, resolved.EnvDir)
 	}
 	paths = append(paths, resolved.Paths...)
-	return dedupeStrings(paths)
+	return stringsutil.DedupeStrings(paths)
 }
 
 func cleanDataDir(dir string) error {
@@ -102,24 +103,4 @@ func safeDataPath(root, path string) bool {
 	}
 	rootWithSep := root + string(os.PathSeparator)
 	return strings.HasPrefix(path, rootWithSep)
-}
-
-func dedupeStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-	return out
 }

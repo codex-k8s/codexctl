@@ -17,6 +17,7 @@ import (
 
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/kube"
+	"github.com/codex-k8s/codexctl/internal/stringsutil"
 )
 
 // Executor executes hook steps defined in services.yaml.
@@ -297,7 +298,7 @@ func (e *Executor) runEnsureDataDirs(_ context.Context, step config.HookStep, st
 		dirs = append(dirs, resolved.EnvDir)
 	}
 	dirs = append(dirs, resolved.Paths...)
-	dirs = dedupeStrings(dirs)
+	dirs = stringsutil.DedupeStrings(dirs)
 
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -560,26 +561,6 @@ func resolveNamespaceForEnv(stack *config.StackConfig, baseCtx config.TemplateCo
 	default:
 		return ""
 	}
-}
-
-func dedupeStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-	return out
 }
 
 func toInt(v any) (int, error) {

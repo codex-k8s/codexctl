@@ -27,15 +27,15 @@ type issueCommentsResponse struct {
 		Repository struct {
 			Issue struct {
 				Comments struct {
-					Nodes    []issueCommentNode `json:"nodes"`
-					PageInfo pageInfo           `json:"pageInfo"`
+					Nodes    []commentNode `json:"nodes"`
+					PageInfo pageInfo      `json:"pageInfo"`
 				} `json:"comments"`
 			} `json:"issue"`
 		} `json:"repository"`
 	} `json:"data"`
 }
 
-type issueCommentNode struct {
+type commentNode struct {
 	DatabaseID      int    `json:"databaseId"`
 	Body            string `json:"body"`
 	URL             string `json:"url"`
@@ -67,18 +67,6 @@ type reviewThreadNode struct {
 }
 
 type reviewCommentBlock struct {
-	Nodes    []reviewCommentNode `json:"nodes"`
-	PageInfo pageInfo            `json:"pageInfo"`
-}
-
-type reviewCommentNode struct {
-	DatabaseID      int    `json:"databaseId"`
-	Body            string `json:"body"`
-	URL             string `json:"url"`
-	CreatedAt       string `json:"createdAt"`
-	IsMinimized     bool   `json:"isMinimized"`
-	MinimizedReason string `json:"minimizedReason"`
-	Author          struct {
-		Login string `json:"login"`
-	} `json:"author"`
+	Nodes    []commentNode `json:"nodes"`
+	PageInfo pageInfo      `json:"pageInfo"`
 }

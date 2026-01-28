@@ -20,16 +20,11 @@ import (
 
 // newPRCommand creates the "pr" group command with helpers for PR review flows.
 func newPRCommand(opts *Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "pr",
-		Short: "Helpers for Pull Request workflows (auto-commit and comments)",
-	}
-
-	cmd.AddCommand(
+	return newGroupCommand(
+		"pr",
+		"Helpers for Pull Request workflows (auto-commit and comments)",
 		newPRReviewApplyCommand(opts),
 	)
-
-	return cmd
 }
 
 // newPRReviewApplyCommand creates "pr review-apply" that commits Codex changes for a PR branch

@@ -302,18 +302,7 @@ func getSliceOfMaps(parent map[string]any, key string) []map[string]any {
 	if !ok || val == nil {
 		return nil
 	}
-	var result []map[string]any
-	switch v := val.(type) {
-	case []any:
-		for _, item := range v {
-			if m, ok := item.(map[string]any); ok {
-				result = append(result, m)
-			}
-		}
-	case []map[string]any:
-		result = append(result, v...)
-	}
-	return result
+	return normalizeMapSlice(val)
 }
 
 // applyVolumes merges existing volumes with hostPath volumes derived from mounts.
@@ -356,18 +345,7 @@ func applyVolumeMounts(container map[string]any, mounts []config.HostMount) map[
 	}
 
 	// Normalize existing mounts.
-	raw := container["volumeMounts"]
-	var existing []map[string]any
-	switch v := raw.(type) {
-	case []any:
-		for _, item := range v {
-			if m, ok := item.(map[string]any); ok {
-				existing = append(existing, m)
-			}
-		}
-	case []map[string]any:
-		existing = append(existing, v...)
-	}
+	existing := normalizeMapSlice(container["volumeMounts"])
 
 	out := make([]map[string]any, 0, len(existing)+len(mounts))
 	for _, vm := range existing {

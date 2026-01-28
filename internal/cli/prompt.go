@@ -16,16 +16,11 @@ import (
 
 // newPromptCommand creates the "prompt" group command for AI prompt operations.
 func newPromptCommand(opts *Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "prompt",
-		Short: "Work with AI prompts and Codex agents",
-	}
-
-	cmd.AddCommand(
+	return newGroupCommand(
+		"prompt",
+		"Work with AI prompts and Codex agents",
 		newPromptRunCommand(opts),
 	)
-
-	return cmd
 }
 
 // newPromptRunCommand creates the "prompt run" subcommand that executes a Codex agent
@@ -192,34 +187,28 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			// Configure git and GitHub CLI inside the Codex container.
-			if err := kubeClient.RunRaw(
+			if err := runCodexPodShell(
 				ctxExec,
-				nil,
-				"-n", ns,
-				"exec", "deploy/codex",
-				"--", "sh", "-lc",
+				kubeClient,
+				ns,
 				"git config --global --add safe.directory /workspace || true; "+
 					"git config --global user.name \"codex-bot\"; "+
 					"git config --global user.email \"codex-bot@codex-k8s.local\" || true",
 			); err != nil {
 				logger.Warn("failed to configure git inside Codex pod", "namespace", ns, "error", err)
 			}
-			if err := kubeClient.RunRaw(
+			if err := runCodexPodShell(
 				ctxExec,
-				nil,
-				"-n", ns,
-				"exec", "deploy/codex",
-				"--", "sh", "-lc",
+				kubeClient,
+				ns,
 				"if [ -n \"$CODEX_GH_PAT\" ]; then printf %s \"$CODEX_GH_PAT\" | gh auth login --with-token >/dev/null 2>&1 || true; fi",
 			); err != nil {
 				logger.Warn("failed to authenticate gh inside Codex pod", "namespace", ns, "error", err)
 			}
-			if err := kubeClient.RunRaw(
+			if err := runCodexPodShell(
 				ctxExec,
-				nil,
-				"-n", ns,
-				"exec", "deploy/codex",
-				"--", "sh", "-lc",
+				kubeClient,
+				ns,
 				"printenv OPENAI_API_KEY | npx -y @openai/codex login --with-api-key >/dev/null 2>&1 || true",
 			); err != nil {
 				logger.Warn("failed to login Codex CLI with OPENAI_API_KEY", "namespace", ns, "error", err)

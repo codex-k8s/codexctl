@@ -17,16 +17,11 @@ import (
 
 // newPlanCommand creates the "plan" group command with helpers for AI planning workflows.
 func newPlanCommand(opts *Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "plan",
-		Short: "Helpers for AI planning workflows and AI-PLAN-PARENT issue structure",
-	}
-
-	cmd.AddCommand(
+	return newGroupCommand(
+		"plan",
+		"Helpers for AI planning workflows and AI-PLAN-PARENT issue structure",
 		newPlanResolveRootCommand(opts),
 	)
-
-	return cmd
 }
 
 // newPlanResolveRootCommand creates "plan resolve-root" that resolves the root planning issue
