@@ -43,6 +43,7 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 		pr            int
 		slot          int
 		withConfigMap bool
+		cleanupAll    bool
 	)
 
 	cmd := &cobra.Command{
@@ -51,7 +52,7 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			if issue <= 0 && pr <= 0 && slot <= 0 {
+			if !cleanupAll && issue <= 0 && pr <= 0 && slot <= 0 {
 				return fmt.Errorf("at least one of --issue, --pr or --slot must be specified")
 			}
 
@@ -80,14 +81,16 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 				if envName != "" && rec.Env != envName {
 					continue
 				}
-				if slot > 0 && rec.Slot != slot {
-					continue
-				}
-				if issue > 0 && rec.Issue != issue {
-					continue
-				}
-				if pr > 0 && rec.PR != pr {
-					continue
+				if !cleanupAll {
+					if slot > 0 && rec.Slot != slot {
+						continue
+					}
+					if issue > 0 && rec.Issue != issue {
+						continue
+					}
+					if pr > 0 && rec.PR != pr {
+						continue
+					}
 				}
 
 				logger.Info("destroying environment for selector", "slot", rec.Slot, "namespace", rec.Namespace, "env", rec.Env, "issue", rec.Issue, "pr", rec.PR)
@@ -127,6 +130,7 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number selector")
 	cmd.Flags().IntVar(&pr, "pr", 0, "PR number selector")
 	cmd.Flags().BoolVar(&withConfigMap, "with-configmap", false, "Remove state ConfigMap for the selected environment")
+	cmd.Flags().BoolVar(&cleanupAll, "all", false, "Cleanup all matching environments for the selected env")
 
 	return cmd
 }
