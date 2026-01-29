@@ -113,7 +113,7 @@ func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) e
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
-	if c != nil && c.StdoutToStderr {
+	if c.StdoutToStderr {
 		cmd.Stdout = os.Stderr
 	} else {
 		cmd.Stdout = os.Stdout

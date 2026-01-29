@@ -10,7 +10,6 @@ import (
 
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/engine"
-	"github.com/codex-k8s/codexctl/internal/env"
 	"github.com/codex-k8s/codexctl/internal/hooks"
 	"github.com/codex-k8s/codexctl/internal/kube"
 )
@@ -29,31 +28,11 @@ func newApplyCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
-			if err != nil {
-				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
-			}
-
 			slot, err := cmd.Flags().GetInt("slot")
 			if err != nil {
 				return err
 			}
-
-			loadOpts := config.LoadOptions{
-				Env:       opts.Env,
-				Namespace: opts.Namespace,
-				Slot:      slot,
-				UserVars:  inlineVars,
-				VarFiles:  varFiles,
-			}
-
-			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			stackCfg, ctxData, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
 			if err != nil {
 				return err
 			}
@@ -82,12 +61,8 @@ func newApplyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Namespace override for resources")
 	cmd.Flags().Bool("wait", false, "Wait for core deployments to become ready")
 	cmd.Flags().Bool("preflight", false, "Run preflight checks before applying manifests")
-	cmd.Flags().StringVar(&onlyServices, "only-services", "", "Apply only selected services (comma-separated names)")
-	cmd.Flags().StringVar(&skipServices, "skip-services", "", "Skip selected services (comma-separated names)")
-	cmd.Flags().StringVar(&onlyInfra, "only-infra", "", "Apply only selected infra blocks (comma-separated names)")
-	cmd.Flags().StringVar(&skipInfra, "skip-infra", "", "Skip selected infra blocks (comma-separated names)")
-	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
-	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+	addRenderFilterFlags(cmd, &onlyServices, &skipServices, &onlyInfra, &skipInfra, "Apply", "Skip")
+	addVarsFlags(cmd)
 	cmd.Flags().Int("slot", 0, "Slot number for slot-based environments (e.g. ai)")
 	_ = cmd.MarkFlagRequired("env")
 

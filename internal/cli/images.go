@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codex-k8s/codexctl/internal/config"
-	"github.com/codex-k8s/codexctl/internal/env"
 	"github.com/codex-k8s/codexctl/internal/logging"
 )
 
@@ -38,26 +37,7 @@ func newImagesMirrorCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
-			if err != nil {
-				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
-			}
-
-			loadOpts := config.LoadOptions{
-				Env:       opts.Env,
-				Namespace: opts.Namespace,
-				Slot:      0,
-				UserVars:  inlineVars,
-				VarFiles:  varFiles,
-			}
-
-			stackCfg, _, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			stackCfg, _, _, _, err := loadStackConfigFromCmd(opts, cmd, 0)
 			if err != nil {
 				return err
 			}
@@ -70,8 +50,7 @@ func newImagesMirrorCommand(opts *Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
-	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+	addVarsFlags(cmd)
 
 	return cmd
 }
@@ -150,31 +129,12 @@ func newImagesBuildCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
-			if err != nil {
-				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
-			}
-
 			slot, err := cmd.Flags().GetInt("slot")
 			if err != nil {
 				return err
 			}
 
-			loadOpts := config.LoadOptions{
-				Env:       opts.Env,
-				Namespace: opts.Namespace,
-				Slot:      slot,
-				UserVars:  inlineVars,
-				VarFiles:  varFiles,
-			}
-
-			stackCfg, tmplCtx, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			stackCfg, tmplCtx, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
 			if err != nil {
 				return err
 			}
@@ -187,8 +147,7 @@ func newImagesBuildCommand(opts *Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
-	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+	addVarsFlags(cmd)
 	cmd.Flags().Int("slot", 0, "Slot number for slot-based environments (e.g. ai)")
 
 	return cmd

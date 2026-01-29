@@ -12,7 +12,6 @@ import (
 
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/engine"
-	"github.com/codex-k8s/codexctl/internal/env"
 	"github.com/codex-k8s/codexctl/internal/kube"
 )
 
@@ -44,26 +43,7 @@ func newCIImagesCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
-			if err != nil {
-				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
-			}
-
-			loadOpts := config.LoadOptions{
-				Env:       opts.Env,
-				Namespace: opts.Namespace,
-				Slot:      slot,
-				UserVars:  inlineVars,
-				VarFiles:  varFiles,
-			}
-
-			stackCfg, tmplCtx, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			stackCfg, tmplCtx, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
 			if err != nil {
 				return err
 			}
@@ -85,8 +65,7 @@ func newCIImagesCommand(opts *Options) *cobra.Command {
 	cmd.Flags().BoolVar(&mirror, "mirror", true, "Mirror external images into the local registry")
 	cmd.Flags().BoolVar(&build, "build", true, "Build and push images declared in services.yaml")
 	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number for slot-based environments (e.g. ai)")
-	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
-	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+	addVarsFlags(cmd)
 
 	return cmd
 }
@@ -114,26 +93,7 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
-			if err != nil {
-				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
-			}
-
-			loadOpts := config.LoadOptions{
-				Env:       opts.Env,
-				Namespace: opts.Namespace,
-				Slot:      slot,
-				UserVars:  inlineVars,
-				VarFiles:  varFiles,
-			}
-
-			stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+			stackCfg, ctxData, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
 			if err != nil {
 				return err
 			}
@@ -222,12 +182,8 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().DurationVar(&waitBackoff, "wait-backoff", 5*time.Second, "Initial backoff for wait retries")
 	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", defaultDeployWaitTimeout, "kubectl wait timeout")
 	cmd.Flags().DurationVar(&requestTimeout, "request-timeout", 600*time.Second, "kubectl request-timeout")
-	cmd.Flags().StringVar(&onlyServices, "only-services", "", "Apply only selected services (comma-separated names)")
-	cmd.Flags().StringVar(&skipServices, "skip-services", "", "Skip selected services (comma-separated names)")
-	cmd.Flags().StringVar(&onlyInfra, "only-infra", "", "Apply only selected infra blocks (comma-separated names)")
-	cmd.Flags().StringVar(&skipInfra, "skip-infra", "", "Skip selected infra blocks (comma-separated names)")
-	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
-	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
+	addRenderFilterFlags(cmd, &onlyServices, &skipServices, &onlyInfra, &skipInfra, "Apply", "Skip")
+	addVarsFlags(cmd)
 
 	return cmd
 }
@@ -242,15 +198,9 @@ func newCIEnsureSlotCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
+			inlineVars, varFiles, err := parseInlineVarsAndFiles(cmd)
 			if err != nil {
 				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
 			}
 
 			machineOutput := strings.ToLower(output) != "plain"
@@ -304,15 +254,9 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
 
-			inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
+			inlineVars, varFiles, err := parseInlineVarsAndFiles(cmd)
 			if err != nil {
 				return err
-			}
-
-			varFile := cmd.Flag("var-file").Value.String()
-			var varFiles []string
-			if varFile != "" {
-				varFiles = append(varFiles, varFile)
 			}
 
 			machineOutput := strings.ToLower(output) != "plain"
