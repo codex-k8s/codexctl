@@ -98,6 +98,7 @@
 - codexctl: управление окружениями и dev/ai слотами (images/apply/ci/manage-env/prompt); рендер/применение шаблонизированных манифестов из `services.yaml`.
   - codexctl вызывается напрямую из PATH (не через ./codexctl).
   - Docker доступен только для сборки образов; пуш в реестр кластера или внешний реестр (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:32000" }}).
+  - При запуске codexctl используйте `--skip-infra tls-issuer,echo-probe` (иначе упирается в cluster-scope и проверку локальных портов).
   - Агент работает в pod; docker демон запущен на ноде кластера через /var/run/docker.sock, поэтому localhost:32000 относится к реестру на ноде/кластере, а не к самому pod.
 -   Рендер: `codexctl render --env {{ .Env }} ...` (используй `--only-services/--only-infra` при необходимости).
 -   В review‑планировании не запускай apply; если нужно сослаться на него — используй фильтры и избегай полного apply и сервиса `codex`.

@@ -56,6 +56,7 @@ Core tools you can use:
 - codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt); render/apply templated manifests from `services.yaml`.
   - codexctl is invoked directly from PATH (not via ./codexctl).
   - Docker is available only for image builds; images are pushed to the in-cluster or external registry (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:32000" }}).
+  - When running codexctl, use `--skip-infra tls-issuer,echo-probe` (avoids cluster-scope access and localhost port checks).
   - The agent runs in a pod; the Docker daemon is on the cluster node via /var/run/docker.sock, so localhost:32000 refers to the node/cluster registry, not the pod itself.
 -   Render: `codexctl render --env {{ .Env }} ...` (use `--only-services/--only-infra` when needed).
 -   Apply: use filters `--only-services/--only-infra` (or `--skip-*`), never run `codexctl apply` without filters and never include the `codex` service.
