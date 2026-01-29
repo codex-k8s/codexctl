@@ -165,7 +165,11 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				"rollout", "status", "deploy/codex",
 				"--timeout="+rolloutTimeout,
 			); err != nil {
-				return err
+				if infraUnhealthy {
+					logger.Warn("codex rollout not ready; continuing due to infra-unhealthy", "namespace", ns, "error", err)
+				} else {
+					return err
+				}
 			}
 
 			logger.Info("uploading Codex config into pod", "namespace", ns)
