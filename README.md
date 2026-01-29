@@ -591,16 +591,24 @@ How to create a user and PAT:
 
 ---
 
-## 🐳 8. Codex agent image (`examples/codex-agent/Dockerfile`)
+## 🐳 8. Codex agent image (project example)
 
-This repository includes an example Dockerfile for the agent image:
+The example agent Dockerfile lives in the project example repo:
+`github.com/codex-k8s/project-example/deploy/codex/Dockerfile`.
+
+It includes everything the agent needs inside the pod:
 
 - Node + Codex CLI (`@openai/codex`);
 - Go toolchain + plugins (`protoc-gen-go`, `protoc-gen-go-grpc`, `wire`);
 - `protoc` and standard includes;
 - Python + virtualenv with basic libraries (`requests`, `httpx`, `redis`, `psycopg[binary]`, `PyYAML`, `ujson`);
-- `kubectl`, `gh`, `jq`, `ripgrep` and other utilities;
-- `codexctl` build and installation of the binary into `/usr/local/bin`.
+- `kubectl`, `gh`, `jq`, `ripgrep`, `rsync`;
+- `docker` CLI for image builds/pushes (the daemon runs on the node via a mounted socket);
+- `codexctl` built and installed into `/usr/local/bin`.
+
+Why this matters: the Codex agent runs in a Kubernetes pod without access to
+host tools. Missing binaries (kubectl/gh/docker/rsync/protoc, etc.) will break
+preflight checks and block apply/build/test workflows.
 
 You can reference this image in `images.codex` and use it in `services.codex` inside your project's `services.yaml`
 (in the examples — `codex-project`):
