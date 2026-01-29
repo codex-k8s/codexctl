@@ -162,6 +162,29 @@ func (s *Store) UpdateAttributes(ctx context.Context, slot int, issue int, pr in
 	return nil
 }
 
+// UpdateNamespace updates the namespace field for a stored slot.
+func (s *Store) UpdateNamespace(ctx context.Context, slot int, namespace string) error {
+	if err := s.ensureNamespace(ctx); err != nil {
+		return err
+	}
+	if slot <= 0 {
+		return nil
+	}
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return nil
+	}
+
+	name := fmt.Sprintf("%s%d", s.prefix, slot)
+	patch := map[string]any{"data": map[string]string{"namespace": ns}}
+	patchBytes, _ := json.Marshal(patch)
+	args := []string{"-n", s.namespace, "patch", "configmap", name, "--type", "merge", "-p", string(patchBytes)}
+	if _, err := s.client.RunAndCapture(ctx, nil, args...); err != nil {
+		return fmt.Errorf("patch configmap %s: %w", name, err)
+	}
+	return nil
+}
+
 // AllocateSlot reserves a new slot and returns its metadata.
 // max == 0 means unlimited slots; prefer >0 is attempted first.
 func (s *Store) AllocateSlot(

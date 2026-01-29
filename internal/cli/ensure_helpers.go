@@ -90,6 +90,22 @@ func ensureSlot(ctx context.Context, logger *slog.Logger, opts *Options, req ens
 	}
 
 	if found != nil {
+		// Recompute namespace for existing records so slot-based envs do not get stuck with "-0"
+		// when services.yaml was previously loaded with Slot=0.
+		ctxSlot := envStore.templateCtx
+		ctxSlot.Slot = found.Slot
+		ctxSlot.Namespace = ""
+		expectedNS, err := config.ResolveNamespace(envStore.stackCfg, ctxSlot, envName)
+		if err == nil && strings.TrimSpace(expectedNS) != "" && strings.TrimSpace(expectedNS) != strings.TrimSpace(found.Namespace) {
+			ctxFix, cancelFix := context.WithTimeout(ctx, 15*time.Second)
+			if err := envStore.store.UpdateNamespace(ctxFix, found.Slot, expectedNS); err != nil {
+				logger.Warn("failed to patch namespace for existing environment record", "slot", found.Slot, "env", envName, "expected", expectedNS, "actual", found.Namespace, "error", err)
+			} else {
+				found.Namespace = expectedNS
+			}
+			cancelFix()
+		}
+
 		res.record = *found
 		res.store = envStore
 		return res, nil
