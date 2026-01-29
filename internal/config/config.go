@@ -253,6 +253,9 @@ type rawHeader struct {
 	EnvFiles   []string          `yaml:"envFiles"`
 	Versions   map[string]string `yaml:"versions"`
 	BaseDomain map[string]string `yaml:"baseDomain"`
+	Namespace  struct {
+		Patterns map[string]string `yaml:"patterns"`
+	} `yaml:"namespace"`
 }
 
 // LoadAndRender reads services.yaml, loads envFiles and user vars, and returns rendered YAML bytes
@@ -314,8 +317,24 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 		BaseDomain:  header.BaseDomain,
 	}
 
-	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Project != "" && ctx.Env != "" && ctx.Env != "ai" {
-		ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
+	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Env != "" {
+		if header.Namespace.Patterns != nil {
+			if pattern, ok := header.Namespace.Patterns[ctx.Env]; ok && strings.TrimSpace(pattern) != "" {
+				rendered, err := RenderTemplate("namespace", []byte(pattern), ctx)
+				if err != nil {
+					return nil, zeroCtx, fmt.Errorf("render namespace pattern for env %q: %w", ctx.Env, err)
+				}
+				if ns := strings.TrimSpace(string(rendered)); ns != "" {
+					ctx.Namespace = ns
+				}
+			}
+		}
+		if ctx.Namespace == "" && ctx.Env == "ai" && ctx.Project != "" && ctx.Slot > 0 {
+			ctx.Namespace = fmt.Sprintf("%s-dev-%d", ctx.Project, ctx.Slot)
+		}
+		if ctx.Namespace == "" && ctx.Project != "" && ctx.Env != "ai" {
+			ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
+		}
 	}
 
 	rendered, err := executeTemplate(rawBytes, ctx)
