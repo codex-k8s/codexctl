@@ -333,7 +333,11 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 			ctx.Namespace = fmt.Sprintf("%s-dev-%d", ctx.Project, ctx.Slot)
 		}
 		if ctx.Namespace == "" && ctx.Env == "staging_repair" && ctx.Project != "" {
-			ctx.Namespace = fmt.Sprintf("%s-staging-repair-%d", ctx.Project, 1) // fixed slot 1 for staging_repair
+			slot := 1 // fixed slot 1 for staging_repair
+			if ctx.Slot > 0 {
+				slot = ctx.Slot
+			}
+			ctx.Namespace = fmt.Sprintf("%s-staging-repair-%d", ctx.Project, slot)
 		}
 		if ctx.Namespace == "" && ctx.Project != "" && ctx.Env != "ai" {
 			ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
