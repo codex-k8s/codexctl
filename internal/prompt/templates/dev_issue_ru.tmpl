@@ -55,6 +55,9 @@
 Основные инструменты:
 - kubectl: логи и статус, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Только диагностика; манифесты через kubectl не применять.
 - codexctl: управление окружениями и dev/ai слотами (images/apply/ci/manage-env/prompt); рендер/применение шаблонизированных манифестов из `services.yaml`.
+  - codexctl вызывается напрямую из PATH (не через ./codexctl).
+  - Docker доступен только для сборки образов; пуш в реестр кластера или внешний реестр (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:32000" }}).
+  - Агент работает в pod; docker демон запущен на ноде кластера через /var/run/docker.sock, поэтому localhost:32000 относится к реестру на ноде/кластере, а не к самому pod.
   - Рендер: `codexctl render --env {{ .Env }} ...` (при необходимости — с `--only-services/--only-infra`).
   - Применение: используйте фильтры `--only-services/--only-infra` (или `--skip-*`), не запускайте `codexctl apply` без фильтров и не включайте сервис `codex`.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
