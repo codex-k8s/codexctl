@@ -318,21 +318,24 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 	}
 
 	if strings.TrimSpace(ctx.Namespace) == "" && ctx.Env != "" {
+		slotBased := ctx.Env == "ai" || ctx.Env == "staging_repair"
 		if header.Namespace.Patterns != nil {
 			if pattern, ok := header.Namespace.Patterns[ctx.Env]; ok && strings.TrimSpace(pattern) != "" {
-				rendered, err := RenderTemplate("namespace", []byte(pattern), ctx)
-				if err != nil {
-					return nil, zeroCtx, fmt.Errorf("render namespace pattern for env %q: %w", ctx.Env, err)
-				}
-				if ns := strings.TrimSpace(string(rendered)); ns != "" {
-					ctx.Namespace = ns
+				if !slotBased || ctx.Slot > 0 {
+					rendered, err := RenderTemplate("namespace", []byte(pattern), ctx)
+					if err != nil {
+						return nil, zeroCtx, fmt.Errorf("render namespace pattern for env %q: %w", ctx.Env, err)
+					}
+					if ns := strings.TrimSpace(string(rendered)); ns != "" {
+						ctx.Namespace = ns
+					}
 				}
 			}
 		}
 		if ctx.Namespace == "" && ctx.Env == "ai" && ctx.Project != "" && ctx.Slot > 0 {
 			ctx.Namespace = fmt.Sprintf("%s-dev-%d", ctx.Project, ctx.Slot)
 		}
-		if ctx.Namespace == "" && ctx.Project != "" && ctx.Env != "ai" {
+		if ctx.Namespace == "" && !slotBased && ctx.Project != "" {
 			ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
 		}
 	}
