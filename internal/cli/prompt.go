@@ -187,6 +187,10 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				"--", "sh", "-lc",
 				"mkdir -p ~/.codex && cat > ~/.codex/config.toml",
 			); err != nil {
+				if infraUnhealthy {
+					logger.Warn("failed to upload Codex config; continuing due to infra-unhealthy", "namespace", ns, "error", err)
+					return nil
+				}
 				return fmt.Errorf("write Codex config inside pod: %w", err)
 			}
 
@@ -260,6 +264,10 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				"--", "sh", "-lc",
 				"cat > /tmp/codex_prompt.txt",
 			); err != nil {
+				if infraUnhealthy {
+					logger.Warn("failed to upload prompt; continuing due to infra-unhealthy", "namespace", ns, "error", err)
+					return nil
+				}
 				return fmt.Errorf("upload prompt into pod: %w", err)
 			}
 
@@ -282,6 +290,10 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				"--", "sh", "-lc",
 				execCmd,
 			); err != nil {
+				if infraUnhealthy {
+					logger.Warn("failed to run Codex exec; continuing due to infra-unhealthy", "namespace", ns, "error", err)
+					return nil
+				}
 				return fmt.Errorf("run Codex exec inside pod: %w", err)
 			}
 
