@@ -61,11 +61,11 @@ This file is the single source of truth for `codexctl`, GitHub Actions and dev-A
 
 `services.yaml` and all referenced manifests are rendered using Go templates. In templates, you have access to:
 
-- `{{ .Env }}` — current environment (`dev`, `staging`, `ai`);
+- `{{ .Env }}` — current environment (`dev`, `staging`, `ai`, `staging_repair`);
 - `{{ .Namespace }}` — Kubernetes namespace;
 - `{{ .Project }}` — project name (`codex-project`);
 - `{{ .Slot }}` — slot number for a dev-AI environment;
-- `{{ .BaseDomain }}` — map of base domains (`dev`, `staging`, `ai`);
+- `{{ .BaseDomain }}` — map of base domains (`dev`, `staging`, `ai`, `staging_repair`);
 - `{{ .Versions }}` — map of service/image versions;
 - helper functions like `envOr`, `default`, `ternary`, `join`, etc.
 
@@ -77,12 +77,13 @@ The same context is used by:
 
 ### 🌐 1.3. Environments and slots
 
-`codexctl` works with three types of environments:
+`codexctl` works with the following environment types:
 
 - `dev` — local developer environment (a single namespace);
 - `staging` — staging cluster (CI/CD, close to production);
 - `ai` — dev-AI slots: isolated namespaces of the form `<project>-dev-<slot>` (for example, `codex-project-dev-<slot>`),
   with domains like `dev-<slot>.staging.<domain>` where Codex agents work on issues/PRs.
+- `staging_repair` — a dedicated namespace with a Codex Pod and RBAC access to staging (for repairs).
 
 Slots (`slot`) are numeric identifiers of dev-AI environments managed by `codexctl ci ensure-slot/ensure-ready`. For each
 slot `codexctl` creates and maintains:
@@ -210,7 +211,8 @@ Configuration of the Codex agent integration:
 - `codex.servicesOverview` — overview of infrastructure/application services and their URLs/ports; also included in prompts.
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — timeouts for `prompt run` and waiting for rollouts.
 
-These fields are used when rendering built-in prompts (`dev_issue_*`, `plan_issue_*`, `dev_review_*`) and the Codex config:
+These fields are used when rendering built-in prompts (`dev_issue_*`, `plan_issue_*`, `plan_review_*`,
+`dev_review_*`, `staging_repair_*`) and the Codex config:
 
 - `internal/prompt/templates/*.tmpl` — prompt templates;
 - `internal/prompt/templates/config_default.toml` — default Codex config.
@@ -410,7 +412,26 @@ codexctl render \
 - Purpose: render manifests to stdout without applying them.
 - Useful in CI or inside Codex pods to inspect what would be applied.
 
-### 🖼️ 5.4. `images`
+### 🧪 5.4. `ci`
+
+Helpers for CI workflows and slot provisioning.
+
+Subcommands:
+
+- `ci images` — mirrors external images and/or builds local ones for CI.
+  Flags: `--mirror/--build` (both default to `true`), `--slot`, `--vars`, `--var-file`.
+- `ci apply` — apply manifests with retries and optional wait.
+  Flags: `--preflight`, `--wait`, `--apply-retries`, `--wait-retries`, `--apply-backoff`,
+  `--wait-backoff`, `--wait-timeout`, `--request-timeout`, and render filters
+  (`--only-services/--skip-services/--only-infra/--skip-infra`).
+- `ci ensure-slot` — allocate or reuse a slot by `--issue/--pr/--slot` selector (one is required).
+  Output: `plain|json|kv`.
+- `ci ensure-ready` — ensure a slot exists and optionally sync sources, prepare images, and apply manifests.
+  Flags: `--code-root-base`, `--source`, `--prepare-images`, `--apply`, `--force-apply`,
+  `--wait-timeout`, `--wait-soft-fail`, output `plain|json|kv`.
+  When `--code-root-base` and `--source` are set, sources are synced to `<code-root-base>/<slot>/src`.
+
+### 🖼️ 5.5. `images`
 
 Subcommands:
 
@@ -426,7 +447,7 @@ Subcommands:
   codexctl images build --env staging
   ```
 
-### 🎛️ 5.5. `manage-env`
+### 🎛️ 5.6. `manage-env`
 
 Command group for dev-AI slot metadata and cleanup (`env=ai`):
 
@@ -434,7 +455,13 @@ Command group for dev-AI slot metadata and cleanup (`env=ai`):
 - `manage-env set` — set slot ↔ issue/PR mappings.
 - `manage-env comment` — render environment links for PR/Issue comments.
 
-### 🧠 5.6. `prompt`
+Notes:
+
+- `manage-env cleanup` supports `--all` (cleanup all matching slots) and `--with-configmap`
+  (remove state ConfigMap for the selected environments).
+- `manage-env comment` accepts `--lang en|ru` for the rendered message.
+
+### 🧠 5.7. `prompt`
 
 Commands for working with Codex agent prompts:
 
@@ -451,7 +478,12 @@ Commands for working with Codex agent prompts:
   This uses built-in prompt templates (`internal/prompt/templates/dev_issue_*.tmpl`) and the `services.yaml` context
   (`codex.extraTools`, `codex.projectContext`, `codex.servicesOverview`, `codex.links`).
 
-### 🧭 5.6. `plan`
+Notes:
+
+- `prompt run` supports `--issue`/`--pr` context, `--resume`, `--infra-unhealthy`, `--vars`, `--var-file`.
+- `--template` overrides `--kind`; when `--kind` is not set it defaults to `dev_issue`.
+
+### 🧭 5.8. `plan`
 
 Commands for working with plans and related task structures:
 
@@ -472,7 +504,7 @@ This mechanism lets you build a tree of tasks: one planning Issue with `[ai-plan
 and child Issues with `AI-PLAN-PARENT: #<root>` are implemented in separate dev-AI slots (`[ai-dev]`) via `ci ensure-ready`
 and `prompt run`.
 
-### 🔄 5.7. `pr review-apply`
+### 🔄 5.9. `pr review-apply`
 
 - Automatically applies changes made by a Codex agent in a dev-AI environment to a PR:
 
@@ -486,7 +518,6 @@ and `prompt run`.
   ```
 
 - The command:
-  - syncs the slot's working directory;
   - runs `git add/commit/push` to the PR branch;
   - leaves a comment in the PR with links to the environment.
 
