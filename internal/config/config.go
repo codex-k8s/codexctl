@@ -141,6 +141,7 @@ type ImageSpec struct {
 type InfraItem struct {
 	Name      string        `yaml:"name"`
 	Manifests []ManifestRef `yaml:"manifests"`
+	When      string        `yaml:"when,omitempty"`
 	Hooks     ResourceHooks `yaml:"hooks,omitempty"`
 }
 

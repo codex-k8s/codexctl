@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/codex-k8s/codexctl/internal/config"
+	"github.com/codex-k8s/codexctl/internal/engine"
 	"github.com/codex-k8s/codexctl/internal/env"
 	"github.com/codex-k8s/codexctl/internal/state"
 )
@@ -216,7 +217,7 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 			ctxApply, cancelApply := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancelApply()
 
-			if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, slotRes.store.envCfg, true, false, req.machineOutput); err != nil {
+			if err := applyStack(ctxApply, logger, stackCfg, ctxData, envName, slotRes.store.envCfg, true, false, req.machineOutput, engine.RenderOptions{}); err != nil {
 				return res, err
 			}
 

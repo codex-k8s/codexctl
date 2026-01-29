@@ -368,6 +368,26 @@ This command:
 - runs `afterApply` hooks (for example, waiting for rollouts);
 - with `--wait` waits for deployments to become ready.
 
+Filtering flags (safe apply):
+
+- `--only-services name1,name2` — apply only selected services.
+- `--skip-services name1,name2` — skip selected services.
+- `--only-infra name1,name2` — apply only selected infra blocks.
+- `--skip-infra name1,name2` — skip selected infra blocks.
+
+When running inside the Codex Pod, always use filters (for example `--only-services`
+or `--only-infra`) and avoid applying the `codex` service itself.
+
+### 🧩 4.2. `codexctl render`
+
+Render manifests without applying them:
+
+```bash
+codexctl render \
+  --env staging \
+  --only-services web-frontend
+```
+
 ---
 
 ## ⌨️ 5. `codexctl` commands: overview
@@ -382,9 +402,14 @@ This command:
 ### ☸️ 5.2. `apply`
 
 - Purpose: render and apply the stack to Kubernetes.
-- Typical example — see section 4.2.
+- Typical example — see section 4.1.
 
-### 🖼️ 5.3. `images`
+### 🧩 5.3. `render`
+
+- Purpose: render manifests to stdout without applying them.
+- Useful in CI or inside Codex pods to inspect what would be applied.
+
+### 🖼️ 5.4. `images`
 
 Subcommands:
 
@@ -400,7 +425,7 @@ Subcommands:
   codexctl images build --env staging
   ```
 
-### 🎛️ 5.4. `manage-env`
+### 🎛️ 5.5. `manage-env`
 
 Command group for dev-AI slot metadata and cleanup (`env=ai`):
 
@@ -408,7 +433,7 @@ Command group for dev-AI slot metadata and cleanup (`env=ai`):
 - `manage-env set` — set slot ↔ issue/PR mappings.
 - `manage-env comment` — render environment links for PR/Issue comments.
 
-### 🧠 5.5. `prompt`
+### 🧠 5.6. `prompt`
 
 Commands for working with Codex agent prompts:
 

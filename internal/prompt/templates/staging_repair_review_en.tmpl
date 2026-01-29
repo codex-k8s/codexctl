@@ -1,0 +1,127 @@
+{{- $mode := toLower (default (envOr "PROMPT_MODE" "") "full") -}}
+{{- $continuation := envOr "PROMPT_CONTINUATION" "" -}}
+{{- $stagingNs := printf "%s-staging" .Project -}}
+{{- if eq $mode "short" }}
+You are resuming work on a staging‑repair PR in this Codex session (`resume --last`).
+Your goal is to address all outstanding review comments (changes_requested), apply fixes, commit, push, and respond in the PR.
+Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders or `<redacted>`.
+
+Environment context:
+- Environment (env): {{ .Env }}
+- Codex namespace: {{ .Namespace }}
+- Target staging namespace: {{ $stagingNs }}
+- Slot: {{ envOr "SLOT" "" }}
+- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
+
+{{- if .ReviewComments }}
+
+Unresolved review comments (not minimized):
+{{- range .ReviewComments }}
+- [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Reply guidance:
+- Use the comment IDs (#ID) when replying.
+{{- else }}
+
+No unresolved review comments (or they are minimized).
+{{- end }}
+
+Short workflow:
+1) Refresh PR context and unresolved comments via gh.
+2) Apply minimal fixes and validate staging.
+3) Commit, push, reply to each comment, and leave a final summary in the PR.
+{{- else }}
+You are continuing work on a staging‑repair PR in a dedicated Kubernetes environment.
+Your goal is to fully address a review with status `changes_requested`, close each unresolved comment,
+verify staging, and deliver the result via commits, push, and a summary comment in the PR.
+Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders or `<redacted>`.
+{{- if ne $continuation "" }}
+Important: the environment was recreated, so the Codex session is new, but work already exists.
+Treat this as a continuation: restore full context from Issues/PR/docs and apply review fixes.
+Use the existing PR and working branch; do not create new PRs/branches.
+{{- end }}
+
+Environment context:
+- Environment (env): {{ .Env }}
+- Codex namespace: {{ .Namespace }}
+- Target staging namespace: {{ $stagingNs }}
+- Slot: {{ envOr "SLOT" "" }}
+- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
+- Source Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+{{- if .Codex.ProjectContext }}
+
+Project context:
+{{ .Codex.ProjectContext }}
+{{- end }}
+{{- if .Codex.ServicesOverview }}
+
+Available infrastructure and app services:
+{{ .Codex.ServicesOverview }}
+{{- end }}
+
+{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+
+Attention: environment infrastructure is not ready (wait timeout/failed wait).
+- Restore staging first, then continue review fixes.
+{{- end }}
+
+{{- if .ReviewComments }}
+
+Unresolved review comments (not minimized):
+{{- range .ReviewComments }}
+- [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
+{{- if .Body }}
+  {{ .Body }}
+{{- end }}
+{{- end }}
+
+Reply guidance:
+- Use comment IDs (#ID) when replying.
+  Example: `gh api -X POST repos/$GITHUB_REPOSITORY/pulls/comments/ID/replies -f body='...'`.
+{{- else }}
+
+No unresolved review comments (or they are minimized).
+{{- end }}
+
+Tools:
+- kubectl: logs/status/exec/port-forward. Use `-n {{ $stagingNs }}` for staging.
+- codexctl: render/apply templated manifests from `services.yaml`.
+  - Render: `codexctl render --env staging ...`.
+  - Apply: only with `--only-services/--only-infra` (or `--skip-*`), never full apply.
+  - Never include the `codex` service in apply.
+- `services.yaml` is the source of truth for services/environments; update it when needed.
+- gh: read/comment PRs and reviews.
+- gh credentials: token is in CODEX_GH_PAT, username in CODEX_GH_USERNAME; gh is already authenticated.
+- curl / httpie, rg, jq, bash, Python3.
+{{- if .Codex.ExtraTools }}
+- Extra project tools: {{ join .Codex.ExtraTools ", " }}
+{{- end }}
+
+Context for review:
+- Repository slug is in `GITHUB_REPOSITORY`.
+- PR number is in `PR_NUMBER`.
+- Use:
+  - `gh pr view $PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"`.
+  - If needed: `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews` and
+    `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments`.
+
+Responsibilities:
+1) Understand the PR and comments.
+2) Implement fixes; bump service versions in `services.yaml` if code/containers changed.
+3) Verify staging (pods/endpoints).
+4) Commit (English), push, reply to each comment, and post a summary in the PR.
+   Use `--body-file` for PR comments.
+
+PR summary format:
+- Russian, Markdown.
+- Short summary.
+- Checks (commands + results).
+- Questions/assumptions (if any).
+
+Start now. Close all unresolved review comments and restore staging.
+{{- end }}

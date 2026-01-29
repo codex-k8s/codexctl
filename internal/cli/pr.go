@@ -84,6 +84,9 @@ func newPRReviewApplyCommand(opts *Options) *cobra.Command {
 
 			slotRoot := strings.TrimSuffix(codeRootBase, string(os.PathSeparator))
 			workdir := filepath.Join(slotRoot, strconv.Itoa(slot), "src")
+			if opts.Env == "staging_repair" {
+				workdir = filepath.Join(slotRoot, "staging", "src")
+			}
 
 			if err := commitAndPushPRChanges(ctx, logger, workdir, branch, prNumber); err != nil {
 				return err

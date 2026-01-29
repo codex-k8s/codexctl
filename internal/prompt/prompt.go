@@ -13,11 +13,12 @@ import (
 
 // Builtin prompt kinds used by Codex integrations.
 const (
-	KindDevIssue    = "dev_issue"
-	KindDevReview   = "dev_review"
-	KindPlanIssue   = "plan_issue"
-	KindPlanReview  = "plan_review"
-	KindRepairIssue = "repair_issue"
+	KindDevIssue            = "dev_issue"
+	KindDevReview           = "dev_review"
+	KindPlanIssue           = "plan_issue"
+	KindPlanReview          = "plan_review"
+	KindStagingRepairIssue  = "staging_repair_issue"
+	KindStagingRepairReview = "staging_repair_review"
 
 	defaultPromptLang          = "en"
 	builtinTemplateDir         = "templates"

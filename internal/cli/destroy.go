@@ -20,6 +20,7 @@ func destroyStack(
 	envCfg config.Environment,
 	envName string,
 ) error {
+	applyKubeconfigOverride(&envCfg)
 	eng := engine.NewEngine()
 	manifests, err := eng.RenderStack(stackCfg, ctxData)
 	if err != nil {

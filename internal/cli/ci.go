@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codex-k8s/codexctl/internal/config"
+	"github.com/codex-k8s/codexctl/internal/engine"
 	"github.com/codex-k8s/codexctl/internal/env"
 	"github.com/codex-k8s/codexctl/internal/kube"
 )
@@ -101,6 +102,10 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 		waitBackoff    time.Duration
 		waitTimeout    string
 		requestTimeout time.Duration
+		onlyServices   string
+		skipServices   string
+		onlyInfra      string
+		skipInfra      string
 	)
 
 	cmd := &cobra.Command{
@@ -147,10 +152,17 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 				delay = 5 * time.Second
 			}
 
+			renderOpts := engine.RenderOptions{
+				OnlyInfra:    parseNameSet(onlyInfra),
+				SkipInfra:    parseNameSet(skipInfra),
+				OnlyServices: parseNameSet(onlyServices),
+				SkipServices: parseNameSet(skipServices),
+			}
+
 			var applyErr error
 			for attempt := 1; attempt <= attempts; attempt++ {
 				ctxApply, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
-				applyErr = applyStack(ctxApply, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, false, false)
+				applyErr = applyStack(ctxApply, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, false, false, renderOpts)
 				cancel()
 				if applyErr == nil {
 					break
@@ -182,6 +194,7 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 				waitDelay = 5 * time.Second
 			}
 
+			applyKubeconfigOverride(&envCfg)
 			client := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 			waitTimeoutResolved := resolveDeployWaitTimeout(stackCfg, waitTimeout, cmd.Flags().Changed("wait-timeout"))
 			for attempt := 1; attempt <= waitAttempts; attempt++ {
@@ -209,6 +222,10 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().DurationVar(&waitBackoff, "wait-backoff", 5*time.Second, "Initial backoff for wait retries")
 	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", defaultDeployWaitTimeout, "kubectl wait timeout")
 	cmd.Flags().DurationVar(&requestTimeout, "request-timeout", 600*time.Second, "kubectl request-timeout")
+	cmd.Flags().StringVar(&onlyServices, "only-services", "", "Apply only selected services (comma-separated names)")
+	cmd.Flags().StringVar(&skipServices, "skip-services", "", "Skip selected services (comma-separated names)")
+	cmd.Flags().StringVar(&onlyInfra, "only-infra", "", "Apply only selected infra blocks (comma-separated names)")
+	cmd.Flags().StringVar(&skipInfra, "skip-infra", "", "Skip selected infra blocks (comma-separated names)")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 

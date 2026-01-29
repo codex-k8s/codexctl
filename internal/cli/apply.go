@@ -17,6 +17,12 @@ import (
 
 // newApplyCommand creates the "apply" subcommand that renders and applies manifests to a cluster.
 func newApplyCommand(opts *Options) *cobra.Command {
+	var (
+		onlyServices string
+		skipServices string
+		onlyInfra    string
+		skipInfra    string
+	)
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Render and apply manifests to a Kubernetes cluster",
@@ -62,7 +68,13 @@ func newApplyCommand(opts *Options) *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Minute)
 			defer cancel()
 
-			return applyStack(ctx, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, wait, false)
+			renderOpts := engine.RenderOptions{
+				OnlyInfra:    parseNameSet(onlyInfra),
+				SkipInfra:    parseNameSet(skipInfra),
+				OnlyServices: parseNameSet(onlyServices),
+				SkipServices: parseNameSet(skipServices),
+			}
+			return applyStack(ctx, logger, stackCfg, ctxData, opts.Env, envCfg, preflight, wait, false, renderOpts)
 		},
 	}
 
@@ -70,6 +82,10 @@ func newApplyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Namespace override for resources")
 	cmd.Flags().Bool("wait", false, "Wait for core deployments to become ready")
 	cmd.Flags().Bool("preflight", false, "Run preflight checks before applying manifests")
+	cmd.Flags().StringVar(&onlyServices, "only-services", "", "Apply only selected services (comma-separated names)")
+	cmd.Flags().StringVar(&skipServices, "skip-services", "", "Skip selected services (comma-separated names)")
+	cmd.Flags().StringVar(&onlyInfra, "only-infra", "", "Apply only selected infra blocks (comma-separated names)")
+	cmd.Flags().StringVar(&skipInfra, "skip-infra", "", "Skip selected infra blocks (comma-separated names)")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 	cmd.Flags().Int("slot", 0, "Slot number for slot-based environments (e.g. ai)")
@@ -90,7 +106,9 @@ func applyStack(
 	preflight bool,
 	wait bool,
 	machineOutput bool,
+	renderOpts engine.RenderOptions,
 ) error {
+	applyKubeconfigOverride(&envCfg)
 	kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 	kubeClient.StdoutToStderr = machineOutput
 
@@ -105,7 +123,7 @@ func applyStack(
 	}
 
 	eng := engine.NewEngine()
-	manifests, err := eng.RenderStack(stackCfg, ctxData)
+	manifests, err := eng.RenderStackWithOptions(stackCfg, ctxData, renderOpts)
 	if err != nil {
 		return err
 	}

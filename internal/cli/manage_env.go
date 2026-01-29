@@ -283,6 +283,7 @@ func loadEnvSlotStore(
 		return nil, err
 	}
 
+	applyKubeconfigOverride(&envCfg)
 	kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 	store, err := state.NewStore(stackCfg, kubeClient, logger)
 	if err != nil {

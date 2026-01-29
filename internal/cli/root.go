@@ -67,6 +67,7 @@ func newRootCommand(opts *Options, logger *slog.Logger) *cobra.Command {
 		newCICommand(opts),
 		newImagesCommand(opts),
 		newManageEnvCommand(opts),
+		newRenderCommand(opts),
 		newPromptCommand(opts),
 		newPlanCommand(opts),
 		newPRCommand(opts),

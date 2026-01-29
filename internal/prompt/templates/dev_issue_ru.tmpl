@@ -55,6 +55,8 @@
 Основные инструменты:
 - kubectl: логи и статус, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Только диагностика; манифесты через kubectl не применять.
 - codexctl: управление окружениями и dev/ai слотами (images/apply/ci/manage-env/prompt); рендер/применение шаблонизированных манифестов из `services.yaml`.
+  - Рендер: `codexctl render --env {{ .Env }} ...` (при необходимости — с `--only-services/--only-infra`).
+  - Применение: используйте фильтры `--only-services/--only-infra` (или `--skip-*`), не запускайте `codexctl apply` без фильтров и не включайте сервис `codex`.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
 - gh: чтение/комментирование Issues/PR, сбор контекста.
 - Доступы для gh: токен в CODEX_GH_PAT, логин в CODEX_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.

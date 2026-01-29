@@ -24,13 +24,36 @@ func NewEngine() *Engine {
 	return &Engine{}
 }
 
+// RenderOptions allows filtering infra/services when rendering a stack.
+type RenderOptions struct {
+	OnlyInfra    map[string]struct{}
+	SkipInfra    map[string]struct{}
+	OnlyServices map[string]struct{}
+	SkipServices map[string]struct{}
+}
+
 // RenderStack renders infrastructure and service manifests for the given stack into a single YAML stream.
 // The result is a multi-document YAML containing all resources for the selected environment.
 func (e *Engine) RenderStack(cfg *config.StackConfig, ctx config.TemplateContext) ([]byte, error) {
+	return e.RenderStackWithOptions(cfg, ctx, RenderOptions{})
+}
+
+// RenderStackWithOptions renders infrastructure and service manifests for the given stack with filters applied.
+func (e *Engine) RenderStackWithOptions(cfg *config.StackConfig, ctx config.TemplateContext, opts RenderOptions) ([]byte, error) {
 	var documents []map[string]any
 
 	// Render infrastructure manifests first.
 	for _, infra := range cfg.Infrastructure {
+		if !resourceIncluded(infra.Name, opts.OnlyInfra, opts.SkipInfra) {
+			continue
+		}
+		ok, err := evaluateInfraWhen(infra.When, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate when for infra %q: %w", infra.Name, err)
+		}
+		if !ok {
+			continue
+		}
 		for _, ref := range infra.Manifests {
 			docs, err := e.loadManifestDocuments(ref.Path, ctx)
 			if err != nil {
@@ -42,6 +65,9 @@ func (e *Engine) RenderStack(cfg *config.StackConfig, ctx config.TemplateContext
 
 	// Render service manifests with per-environment overlays.
 	for _, svc := range cfg.Services {
+		if !resourceIncluded(svc.Name, opts.OnlyServices, opts.SkipServices) {
+			continue
+		}
 		ok, err := evaluateServiceWhen(svc.When, ctx)
 		if err != nil {
 			return nil, fmt.Errorf("evaluate when for service %q: %w", svc.Name, err)
@@ -85,11 +111,43 @@ func (e *Engine) RenderStack(cfg *config.StackConfig, ctx config.TemplateContext
 	return buf.Bytes(), nil
 }
 
+func resourceIncluded(name string, only, skip map[string]struct{}) bool {
+	key := strings.ToLower(strings.TrimSpace(name))
+	if len(only) > 0 {
+		if _, ok := only[key]; !ok {
+			return false
+		}
+	}
+	if _, ok := skip[key]; ok {
+		return false
+	}
+	return true
+}
+
 func evaluateServiceWhen(expr string, ctx config.TemplateContext) (bool, error) {
 	if strings.TrimSpace(expr) == "" {
 		return true, nil
 	}
 	rendered, err := config.RenderTemplate("service-when", []byte(expr), ctx)
+	if err != nil {
+		return false, err
+	}
+	s := strings.TrimSpace(string(rendered))
+	if s == "" {
+		return true, nil
+	}
+	ls := strings.ToLower(s)
+	if ls == "false" || ls == "0" || ls == "no" {
+		return false, nil
+	}
+	return true, nil
+}
+
+func evaluateInfraWhen(expr string, ctx config.TemplateContext) (bool, error) {
+	if strings.TrimSpace(expr) == "" {
+		return true, nil
+	}
+	rendered, err := config.RenderTemplate("infra-when", []byte(expr), ctx)
 	if err != nil {
 		return false, err
 	}
@@ -171,8 +229,8 @@ func applyNamespace(doc map[string]any, ns string) {
 	}
 	meta := getOrCreateMap(doc, "metadata")
 	if existing, _ := meta["namespace"].(string); strings.TrimSpace(existing) != "" {
-        return
-    }
+		return
+	}
 	meta["namespace"] = ns
 }
 

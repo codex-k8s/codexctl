@@ -54,6 +54,8 @@ No current Issue comments (or they are minimized).
 Core tools you can use:
 - kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Diagnostics only; do not apply manifests with kubectl.
 - codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt); render/apply templated manifests from `services.yaml`.
+-   Render: `codexctl render --env {{ .Env }} ...` (use `--only-services/--only-infra` when needed).
+-   Apply: use filters `--only-services/--only-infra` (or `--skip-*`), never run `codexctl apply` without filters and never include the `codex` service.
 - `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
 - gh: read/comment on Issues/PRs, collect review context.
 - gh credentials: token is in CODEX_GH_PAT, username in CODEX_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
