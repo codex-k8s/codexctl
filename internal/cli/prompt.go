@@ -259,36 +259,12 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				return fmt.Errorf("upload prompt into pod: %w", err)
 			}
 
-			execCmd := fmt.Sprintf(`KUBECONFIG_PATH=/tmp/codex-kubeconfig
-if [ ! -s "$KUBECONFIG_PATH" ]; then
-cat > "$KUBECONFIG_PATH" <<EOF
-apiVersion: v1
-kind: Config
-clusters:
-- cluster:
-    certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}
-  name: in-cluster
-contexts:
-- context:
-    cluster: in-cluster
-    namespace: %s
-    user: service-account
-  name: in-cluster
-current-context: in-cluster
-users:
-- name: service-account
-  user:
-    token: $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-EOF
-fi
-export KUBECONFIG="$KUBECONFIG_PATH"
-export CODEXCTL_KUBECONFIG="$KUBECONFIG_PATH"
-if [ ! -s /tmp/codex_prompt.txt ]; then echo 'error: /tmp/codex_prompt.txt is empty' >&2; exit 1; fi
-PROMPT_B64=$(base64 -w0 /tmp/codex_prompt.txt)
-PROMPT=$(printf %%s "$PROMPT_B64" | base64 -d)
-echo "debug: prompt length bytes=${#PROMPT}" >&2
-npx -y @openai/codex exec "$PROMPT" --cd /workspace --json`, ns)
+			execCmd := "" +
+				"if [ ! -s /tmp/codex_prompt.txt ]; then echo 'error: /tmp/codex_prompt.txt is empty' >&2; exit 1; fi; " +
+				"PROMPT_B64=$(base64 -w0 /tmp/codex_prompt.txt); " +
+				"PROMPT=$(printf %s \"$PROMPT_B64\" | base64 -d); " +
+				"echo \"debug: prompt length bytes=${#PROMPT}\" >&2; " +
+				"npx -y @openai/codex exec \"$PROMPT\" --cd /workspace --json"
 			if resumeFlag {
 				execCmd = execCmd + " resume --last"
 			}

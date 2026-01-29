@@ -124,11 +124,11 @@ func resourceIncluded(name string, only, skip map[string]struct{}) bool {
 	return true
 }
 
-func evaluateServiceWhen(expr string, ctx config.TemplateContext) (bool, error) {
+func evaluateWhen(kind, expr string, ctx config.TemplateContext) (bool, error) {
 	if strings.TrimSpace(expr) == "" {
 		return true, nil
 	}
-	rendered, err := config.RenderTemplate("service-when", []byte(expr), ctx)
+	rendered, err := config.RenderTemplate(kind+"-when", []byte(expr), ctx)
 	if err != nil {
 		return false, err
 	}
@@ -143,23 +143,12 @@ func evaluateServiceWhen(expr string, ctx config.TemplateContext) (bool, error) 
 	return true, nil
 }
 
+func evaluateServiceWhen(expr string, ctx config.TemplateContext) (bool, error) {
+	return evaluateWhen("service", expr, ctx)
+}
+
 func evaluateInfraWhen(expr string, ctx config.TemplateContext) (bool, error) {
-	if strings.TrimSpace(expr) == "" {
-		return true, nil
-	}
-	rendered, err := config.RenderTemplate("infra-when", []byte(expr), ctx)
-	if err != nil {
-		return false, err
-	}
-	s := strings.TrimSpace(string(rendered))
-	if s == "" {
-		return true, nil
-	}
-	ls := strings.ToLower(s)
-	if ls == "false" || ls == "0" || ls == "no" {
-		return false, nil
-	}
-	return true, nil
+	return evaluateWhen("infra", expr, ctx)
 }
 
 func (e *Engine) loadManifestDocuments(path string, ctx config.TemplateContext) ([]map[string]any, error) {
