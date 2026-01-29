@@ -344,6 +344,7 @@ services:
 - `image` — переопределение `image:` в манифестах (репозиторий/тэг);
 - `overlays` — настройки по окружениям (hostPath‑монтаж исходников, отключение ingress в dev‑AI и т.п.).
 - `hostMounts` — список монтируемых директорий с хоста (локальные исходники для dev/dev‑AI).
+  Опционально: `hostPathType` (по умолчанию `Directory`). Для `/var/run/docker.sock` используйте `Socket`.
 - `dropKinds` — список Kubernetes‑ресурсов (по kind), которые нужно выкинуть из рендера (например, Ingress в dev‑AI).
 
 ---

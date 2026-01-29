@@ -181,9 +181,10 @@ type Overlay struct {
 
 // HostMount describes a hostPath mount injected into workloads.
 type HostMount struct {
-	Name      string `yaml:"name"`
-	HostPath  string `yaml:"hostPath"`
-	MountPath string `yaml:"mountPath"`
+	Name         string `yaml:"name"`
+	HostPath     string `yaml:"hostPath"`
+	MountPath    string `yaml:"mountPath"`
+	HostPathType string `yaml:"hostPathType,omitempty"`
 }
 
 // StateConfig describes how environment state (slots, metadata) is stored.

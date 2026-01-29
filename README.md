@@ -343,7 +343,8 @@ services:
 - `manifests` — list of YAML files for the service;
 - `image` — image override in manifests (repository/tag);
 - `overlays` — environment-specific settings (hostPath mounts for sources, disabling ingress in dev-AI, etc.);
-- `hostMounts` — list of host directories to mount (local sources for dev/dev-AI);
+- `hostMounts` — list of host directories to mount (local sources for dev/dev-AI).
+  Optional: `hostPathType` (defaults to `Directory`). Use `Socket` for mounts like `/var/run/docker.sock`.
 - `dropKinds` — list of Kubernetes resource kinds to drop from rendering (e.g., Ingress in dev-AI).
 
 ---

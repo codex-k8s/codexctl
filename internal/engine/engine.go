@@ -370,11 +370,15 @@ func applyVolumes(volumes []map[string]any, mounts []config.HostMount) []map[str
 		if m.Name == "" || m.HostPath == "" || m.MountPath == "" {
 			continue
 		}
+		hostPathType := m.HostPathType
+		if hostPathType == "" {
+			hostPathType = "Directory"
+		}
 		out = append(out, map[string]any{
 			"name": m.Name,
 			"hostPath": map[string]any{
 				"path": m.HostPath,
-				"type": "Directory",
+				"type": hostPathType,
 			},
 		})
 	}
