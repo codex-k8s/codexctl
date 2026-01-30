@@ -25,7 +25,7 @@ Available infrastructure and application services (may be incomplete):
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "false") "true" }}
 
 Attention: the environment infrastructure is not ready (wait timeout / failed wait).
 Diagnose and restore it first, and only then proceed with the Issue.

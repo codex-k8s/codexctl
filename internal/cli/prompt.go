@@ -65,10 +65,10 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			if !cmd.Flags().Changed("infra-unhealthy") && envPresent("CODEXCTL_INFRA_UNHEALTHY") {
-				infraUnhealthy = envVars.InfraUnhealthy.Bool()
+				infraUnhealthy = envVars.InfraUnhealthy
 			}
 			if infraUnhealthy {
-				inlineVars["CODEXCTL_INFRA_UNHEALTHY"] = "1"
+				inlineVars["CODEXCTL_INFRA_UNHEALTHY"] = "true"
 			}
 
 			slot, err := cmd.Flags().GetInt("slot")
@@ -186,7 +186,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 
 			resumeFlag, _ := cmd.Flags().GetBool("resume")
 			if !cmd.Flags().Changed("resume") && envPresent("CODEXCTL_RESUME") {
-				resumeFlag = envVars.Resume.Bool()
+				resumeFlag = envVars.Resume
 			}
 			promptMode := strings.TrimSpace(ctxData.EnvMap["CODEXCTL_PROMPT_MODE"])
 			if promptMode == "" {

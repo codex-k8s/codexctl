@@ -25,7 +25,7 @@
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "false") "true" }}
 
 Внимание: инфраструктура окружения не готова (wait timeout/ошибка ожидания).
 Сначала диагностируй и восстанови, а уже затем переходи к Issue.

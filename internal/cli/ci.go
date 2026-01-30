@@ -104,10 +104,10 @@ func newCIImagesCommand(opts *Options) *cobra.Command {
 				slot = envVars.Slot
 			}
 			if !cmd.Flags().Changed("mirror") && envPresent("CODEXCTL_MIRROR_IMAGES") {
-				mirror = envVars.MirrorImages.Bool()
+				mirror = envVars.MirrorImages
 			}
 			if !cmd.Flags().Changed("build") && envPresent("CODEXCTL_BUILD_IMAGES") {
-				build = envVars.BuildImages.Bool()
+				build = envVars.BuildImages
 			}
 
 			stackCfg, tmplCtx, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
@@ -168,10 +168,10 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 				slot = envVars.Slot
 			}
 			if !cmd.Flags().Changed("preflight") && envPresent("CODEXCTL_PREFLIGHT") {
-				preflight = envVars.Preflight.Bool()
+				preflight = envVars.Preflight
 			}
 			if !cmd.Flags().Changed("wait") && envPresent("CODEXCTL_WAIT") {
-				wait = envVars.Wait.Bool()
+				wait = envVars.Wait
 			}
 			if !cmd.Flags().Changed("apply-retries") && envPresent("CODEXCTL_APPLY_RETRIES") {
 				applyRetries = envVars.ApplyRetries
@@ -422,19 +422,19 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				source = envCfg.Source
 			}
 			if !cmd.Flags().Changed("prepare-images") && envPresent("CODEXCTL_PREPARE_IMAGES") {
-				prepareImages = envCfg.PrepareImages.Bool()
+				prepareImages = envCfg.PrepareImages
 			}
 			if !cmd.Flags().Changed("apply") && envPresent("CODEXCTL_APPLY") {
-				doApply = envCfg.Apply.Bool()
+				doApply = envCfg.Apply
 			}
 			if !cmd.Flags().Changed("force-apply") && envPresent("CODEXCTL_FORCE_APPLY") {
-				forceApply = envCfg.ForceApply.Bool()
+				forceApply = envCfg.ForceApply
 			}
 			if !cmd.Flags().Changed("wait-timeout") && envPresent("CODEXCTL_WAIT_TIMEOUT") {
 				waitTimeout = envCfg.WaitTimeout
 			}
 			if !cmd.Flags().Changed("wait-soft-fail") && envPresent("CODEXCTL_WAIT_SOFT_FAIL") {
-				waitSoftFail = envCfg.WaitSoftFail.Bool()
+				waitSoftFail = envCfg.WaitSoftFail
 			}
 
 			inlineVars, varFiles, err := parseInlineVarsAndFiles(cmd)
@@ -464,41 +464,33 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				return err
 			}
 			newEnv := res.created || res.recreated
-			infraUnhealthy := "0"
-			if !res.infraReady {
-				infraUnhealthy = "1"
-			}
-			createdOut := boolTo01(res.created)
-			recreatedOut := boolTo01(res.recreated)
-			infraReadyOut := boolTo01(res.infraReady)
-			envReadyOut := boolTo01(res.envReady)
-			newEnvOut := boolTo01(newEnv)
+			infraUnhealthy := strconv.FormatBool(!res.infraReady)
 			writeErr := ghoutput.Write(map[string]string{
 				"slot":               strconv.Itoa(res.record.Slot),
 				"namespace":          res.record.Namespace,
 				"env":                res.record.Env,
-				"created":            createdOut,
-				"recreated":          recreatedOut,
-				"infra_ready":        infraReadyOut,
-				"codexctl_env_ready": envReadyOut,
+				"created":            strconv.FormatBool(res.created),
+				"recreated":          strconv.FormatBool(res.recreated),
+				"infra_ready":        strconv.FormatBool(res.infraReady),
+				"codexctl_env_ready": strconv.FormatBool(res.envReady),
 				"infra_unhealthy":    infraUnhealthy,
-				"codexctl_new_env":   newEnvOut,
+				"codexctl_new_env":   strconv.FormatBool(newEnv),
 				"codexctl_run_args":  buildCodexctlRunArgs(res.record, issue, pr, opts.Env),
 			})
 			if writeErr != nil {
 				return writeErr
 			}
 			fmt.Printf(
-				"slot: %d\nnamespace: %s\nenv: %s\ncreated: %s\nrecreated: %s\ninfra_ready: %s\ncodexctl_env_ready: %s\ninfra_unhealthy: %s\ncodexctl_new_env: %s\n",
+				"slot: %d\nnamespace: %s\nenv: %s\ncreated: %t\nrecreated: %t\ninfra_ready: %t\ncodexctl_env_ready: %t\ninfra_unhealthy: %s\ncodexctl_new_env: %t\n",
 				res.record.Slot,
 				res.record.Namespace,
 				res.record.Env,
-				createdOut,
-				recreatedOut,
-				infraReadyOut,
-				envReadyOut,
+				res.created,
+				res.recreated,
+				res.infraReady,
+				res.envReady,
 				infraUnhealthy,
-				newEnvOut,
+				newEnv,
 			)
 			return nil
 		},
@@ -540,13 +532,6 @@ func buildCodexctlRunArgs(rec state.EnvRecord, issue, pr int, envName string) st
 		args = append(args, "--pr", strconv.Itoa(pr))
 	}
 	return strings.Join(args, " ")
-}
-
-func boolTo01(v bool) string {
-	if v {
-		return "1"
-	}
-	return "0"
 }
 
 // waitForDeployments runs kubectl wait with a request timeout wrapper.

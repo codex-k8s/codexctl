@@ -616,7 +616,7 @@ codexctl render \
 - `ci ensure-ready` — гарантирует слот и при необходимости синхронизирует исходники, готовит образы и применяет манифесты.
   Параметры берутся из `CODEXCTL_*` (например, `CODEXCTL_CODE_ROOT_BASE`, `CODEXCTL_SOURCE`, `CODEXCTL_PREPARE_IMAGES`, `CODEXCTL_APPLY`,
   `CODEXCTL_FORCE_APPLY`, `CODEXCTL_WAIT_TIMEOUT`, `CODEXCTL_WAIT_SOFT_FAIL`). При наличии `GITHUB_OUTPUT` пишет `slot`, `namespace`, `env`,
-  `created`, `recreated`, `infra_ready`, `codexctl_env_ready`, `infra_unhealthy`, `codexctl_new_env`, `codexctl_run_args` (булевы значения — `1/0`). При `CODEXCTL_CODE_ROOT_BASE` и `CODEXCTL_SOURCE` исходники синхронизируются в
+  `created`, `recreated`, `infra_ready`, `codexctl_env_ready`, `infra_unhealthy`, `codexctl_new_env`, `codexctl_run_args` (булевы значения — `true/false`). При `CODEXCTL_CODE_ROOT_BASE` и `CODEXCTL_SOURCE` исходники синхронизируются в
   `<CODEXCTL_CODE_ROOT_BASE>/<slot>/src`.
 
 ### 🖼️ 5.5. `images`
@@ -745,7 +745,7 @@ registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
   - `slotCodeRoot` (например, `.../slots/<slot>/src/...`) и
   - `stagingCodeRoot` (например, `.../staging/src/...`),
   которые затем применяются в `services.*.overlays.*.hostMounts` (см. заголовок‑комментарии в `services.yaml`).
-- `CODEXCTL_DATA_ROOT` — базовый путь до `.data` с данными Postgres/Redis/кеша/и т.д. (используется в `dataPaths.root` и `dataPaths.envDir`). Очищается при `manage-env cleanup` с `CODEXCTL_WITH_CONFIGMAP=1` (в AI-dev).
+- `CODEXCTL_DATA_ROOT` — базовый путь до `.data` с данными Postgres/Redis/кеша/и т.д. (используется в `dataPaths.root` и `dataPaths.envDir`). Очищается при `manage-env cleanup` с `CODEXCTL_WITH_CONFIGMAP=true` (в AI-dev).
 
 В GitHub Actions обычно задаются:
 
@@ -803,8 +803,8 @@ jobs:
       - name: "Prepare images via codexctl 🪞🏗️"
         env:
           CODEXCTL_ENV:          staging
-          CODEXCTL_MIRROR_IMAGES: 1
-          CODEXCTL_BUILD_IMAGES:  1
+          CODEXCTL_MIRROR_IMAGES: true
+          CODEXCTL_BUILD_IMAGES:  true
           REGISTRY_HOST: localhost:32000
         run: |
           set -euo pipefail
@@ -819,8 +819,8 @@ jobs:
           CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
           CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
           CODEXCTL_ENV:            staging
-          CODEXCTL_PREFLIGHT:      1
-          CODEXCTL_WAIT:           1
+          CODEXCTL_PREFLIGHT:      true
+          CODEXCTL_WAIT:           true
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
           CODEXCTL_CODE_ROOT_BASE:       ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
@@ -950,10 +950,10 @@ jobs:
           CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
           CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
           CODEXCTL_SOURCE:         .
-          CODEXCTL_PREPARE_IMAGES: 1
-          CODEXCTL_APPLY:          1
-          CODEXCTL_FORCE_APPLY:    1
-          CODEXCTL_WAIT_SOFT_FAIL: 1
+          CODEXCTL_PREPARE_IMAGES: true
+          CODEXCTL_APPLY:          true
+          CODEXCTL_FORCE_APPLY:    true
+          CODEXCTL_WAIT_SOFT_FAIL: true
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
           POSTGRES_USER:           ${{ secrets.POSTGRES_USER }}
@@ -1017,7 +1017,7 @@ jobs:
         env:
           CODEXCTL_ENV:          ai
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
-          CODEXCTL_WITH_CONFIGMAP: 1
+          CODEXCTL_WITH_CONFIGMAP: true
         run: |
           set -euo pipefail
 
@@ -1114,8 +1114,8 @@ jobs:
           CODEXCTL_ISSUE_NUMBER:   ${{ steps.root_issue.outputs.root }}
           CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
           CODEXCTL_SOURCE:         .
-          CODEXCTL_PREPARE_IMAGES: 1
-          CODEXCTL_APPLY:          1
+          CODEXCTL_PREPARE_IMAGES: true
+          CODEXCTL_APPLY:          true
         run: |
           set -euo pipefail
           echo "info: ensuring AI planning environment ready via codexctl (ensure-ready)" >&2
@@ -1135,8 +1135,8 @@ jobs:
           CODEXCTL_ISSUE_NUMBER:   ${{ steps.root_issue.outputs.root }}
           CODEXCTL_FOCUS_ISSUE_NUMBER: ${{ steps.root_issue.outputs.focus }}
           CODEXCTL_LANG:    ru
-          CODEXCTL_PROMPT_CONTINUATION: ${{ steps.card.outputs.codexctl_new_env == '1' && '1' || '0' }}
-          CODEXCTL_RESUME:         ${{ steps.card.outputs.codexctl_new_env == '1' && '0' || '1' }}
+          CODEXCTL_PROMPT_CONTINUATION: ${{ steps.card.outputs.codexctl_new_env == 'true' && 'true' || 'false' }}
+          CODEXCTL_RESUME:         ${{ steps.card.outputs.codexctl_new_env == 'true' && 'false' || 'true' }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
         run: |
@@ -1152,12 +1152,12 @@ Workflow:
 2) `ci ensure-slot` — выбрать/создать слот (значения берутся из `CODEXCTL_ENV=ai`, `CODEXCTL_ISSUE_NUMBER=<N>`,
    `CODEXCTL_DEV_SLOTS_MAX`).
 3) `ci ensure-ready` — поднять AI-dev окружение (`CODEXCTL_ENV=ai`, `CODEXCTL_SLOT=<slot>`, `CODEXCTL_ISSUE_NUMBER=<N>`,
-   `CODEXCTL_PREPARE_IMAGES=1`, `CODEXCTL_APPLY=1`).
+   `CODEXCTL_PREPARE_IMAGES=true`, `CODEXCTL_APPLY=true`).
 4) Подготовить рабочую ветку в workspace слота (`codex/issue-<N>`).
-5) `prompt run --kind dev_issue` — запустить dev‑агента (если infra нездорова — выставить `CODEXCTL_INFRA_UNHEALTHY=1`).
+5) `prompt run --kind dev_issue` — запустить dev‑агента (если infra нездорова — выставить `CODEXCTL_INFRA_UNHEALTHY=true`).
 6) auto-commit → push, найти PR по ветке, прикрепить PR к слоту (`manage-env set`) и
    запостить комментарий со ссылками (`manage-env comment-pr`).
-7) На сбое — cleanup (`manage-env cleanup` с `CODEXCTL_ENV`/`CODEXCTL_SLOT`/`CODEXCTL_ISSUE_NUMBER` и `CODEXCTL_WITH_CONFIGMAP=1`).
+7) На сбое — cleanup (`manage-env cleanup` с `CODEXCTL_ENV`/`CODEXCTL_SLOT`/`CODEXCTL_ISSUE_NUMBER` и `CODEXCTL_WITH_CONFIGMAP=true`).
 
 ```yaml
 name: "AI Dev Issue 🛠"
@@ -1236,10 +1236,10 @@ jobs:
           CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
           CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
           CODEXCTL_SOURCE:         .
-          CODEXCTL_PREPARE_IMAGES: 1
-          CODEXCTL_APPLY:          1
-          CODEXCTL_FORCE_APPLY:    1
-          CODEXCTL_WAIT_SOFT_FAIL: 1
+          CODEXCTL_PREPARE_IMAGES: true
+          CODEXCTL_APPLY:          true
+          CODEXCTL_FORCE_APPLY:    true
+          CODEXCTL_WAIT_SOFT_FAIL: true
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
           POSTGRES_USER:           ${{ secrets.POSTGRES_USER }}
@@ -1386,7 +1386,7 @@ jobs:
         env:
           CODEXCTL_ENV:          ai
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
-          CODEXCTL_WITH_CONFIGMAP: 1
+          CODEXCTL_WITH_CONFIGMAP: true
         run: |
           set -euo pipefail
 
@@ -1460,8 +1460,8 @@ jobs:
           CODEXCTL_PR_NUMBER:     ${{ github.event.pull_request.number }}
           CODEXCTL_DEV_SLOTS_MAX: ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
           CODEXCTL_SOURCE:        .
-          CODEXCTL_PREPARE_IMAGES: 1
-          CODEXCTL_APPLY:          1
+          CODEXCTL_PREPARE_IMAGES: true
+          CODEXCTL_APPLY:          true
         run: |
           set -euo pipefail
           echo "info: ensuring AI PR review environment ready via codexctl (ensure-ready)" >&2
@@ -1480,8 +1480,8 @@ jobs:
           CODEXCTL_NAMESPACE:      ${{ steps.card.outputs.namespace }}
           CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
           CODEXCTL_LANG:    ru
-          CODEXCTL_PROMPT_CONTINUATION: ${{ steps.card.outputs.codexctl_new_env == '1' && '1' || '0' }}
-          CODEXCTL_RESUME:         ${{ steps.card.outputs.codexctl_new_env == '1' && '0' || '1' }}
+          CODEXCTL_PROMPT_CONTINUATION: ${{ steps.card.outputs.codexctl_new_env == 'true' && 'true' || 'false' }}
+          CODEXCTL_RESUME:         ${{ steps.card.outputs.codexctl_new_env == 'true' && 'false' || 'true' }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
         run: |
@@ -1582,8 +1582,8 @@ jobs:
           CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
           CODEXCTL_ENV:            ai-repair
           CODEXCTL_SLOT:           ${{ needs.create-ai-repair.outputs.slot }}
-          CODEXCTL_PREFLIGHT:      1
-          CODEXCTL_WAIT:           1
+          CODEXCTL_PREFLIGHT:      true
+          CODEXCTL_WAIT:           true
           CODEXCTL_ONLY_INFRA:     namespace-and-config,codex-ai-repair-rbac
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
@@ -1605,7 +1605,7 @@ jobs:
         env:
           CODEXCTL_ENV:  ai-repair
           CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
-          CODEXCTL_WITH_CONFIGMAP: 1
+          CODEXCTL_WITH_CONFIGMAP: true
         run: |
           set -euo pipefail
           codexctl manage-env cleanup || true
@@ -1669,7 +1669,7 @@ jobs:
         env:
           CODEXCTL_ENV:  ai-repair
           CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
-          CODEXCTL_WITH_CONFIGMAP: 1
+          CODEXCTL_WITH_CONFIGMAP: true
         run: |
           set -euo pipefail
           if [ -z "${CODEXCTL_SLOT}" ]; then
@@ -1827,8 +1827,8 @@ jobs:
           CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
           CODEXCTL_ENV:            ai-repair
           CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
-          CODEXCTL_PREFLIGHT:      1
-          CODEXCTL_WAIT:           1
+          CODEXCTL_PREFLIGHT:      true
+          CODEXCTL_WAIT:           true
           CODEXCTL_ONLY_INFRA:     namespace-and-config,codex-ai-repair-rbac
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
@@ -1856,8 +1856,8 @@ jobs:
           CODEXCTL_NAMESPACE:      ${{ steps.card.outputs.namespace }}
           CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
           CODEXCTL_LANG:    ru
-          CODEXCTL_PROMPT_CONTINUATION: ${{ (steps.card.outputs.codexctl_new_env == '1' || steps.card.outputs.codexctl_env_ready != '1') && '1' || '0' }}
-          CODEXCTL_RESUME:         ${{ (steps.card.outputs.codexctl_new_env == '1' || steps.card.outputs.codexctl_env_ready != '1') && '0' || '1' }}
+          CODEXCTL_PROMPT_CONTINUATION: ${{ (steps.card.outputs.codexctl_new_env == 'true' || steps.card.outputs.codexctl_env_ready != 'true') && 'true' || 'false' }}
+          CODEXCTL_RESUME:         ${{ (steps.card.outputs.codexctl_new_env == 'true' || steps.card.outputs.codexctl_env_ready != 'true') && 'false' || 'true' }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
         run: |
@@ -1881,7 +1881,7 @@ jobs:
         env:
           CODEXCTL_ENV:  ai-repair
           CODEXCTL_SLOT: ${{ steps.card.outputs.slot }}
-          CODEXCTL_WITH_CONFIGMAP: 1
+          CODEXCTL_WITH_CONFIGMAP: true
         run: |
           set -euo pipefail
           codexctl manage-env cleanup || true
@@ -1915,22 +1915,22 @@ jobs:
           CODEXCTL_PR_NUMBER: ${{ github.event.pull_request.number }}
           CODEXCTL_BRANCH: ${{ github.event.pull_request.head.ref }}
           CODEXCTL_REPO: ${{ github.repository }}
-          CODEXCTL_WITH_CONFIGMAP: 1
-          CODEXCTL_DELETE_BRANCH: 1
+          CODEXCTL_WITH_CONFIGMAP: true
+          CODEXCTL_DELETE_BRANCH: true
         run: codexctl manage-env cleanup-pr || true
       - if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
         env:
           CODEXCTL_BRANCH: ${{ github.event.pull_request.head.ref }}
           CODEXCTL_REPO: ${{ github.repository }}
           CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_CLOSE_ISSUE: 1
+          CODEXCTL_CLOSE_ISSUE: true
         run: codexctl manage-env close-linked-issue || true
       - if: github.event_name == 'issues'
         env:
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
           CODEXCTL_REPO: ${{ github.repository }}
-          CODEXCTL_WITH_CONFIGMAP: 1
-          CODEXCTL_DELETE_BRANCH: 1
+          CODEXCTL_WITH_CONFIGMAP: true
+          CODEXCTL_DELETE_BRANCH: true
         run: codexctl manage-env cleanup-issue || true
 ```
 

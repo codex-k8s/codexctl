@@ -93,7 +93,7 @@
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "false") "true" }}
 
 Внимание: инфраструктура не готова (таймаут/ошибка ожидания).
 - Сначала восстановите инфраструктуру (kubectl get/describe/logs, фиксы/перезапуски).

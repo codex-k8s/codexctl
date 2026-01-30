@@ -91,7 +91,7 @@ Available infrastructure and application services (may be incomplete):
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "false") "true" }}
 
 Attention: infrastructure is not ready (wait timeout / failed wait).
 - Capture this in the updated plan and add a sub-task for diagnosis/recovery.

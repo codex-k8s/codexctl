@@ -70,10 +70,10 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 				pr = envCfg.PR
 			}
 			if !cmd.Flags().Changed("all") && envPresent("CODEXCTL_ALL") {
-				cleanupAll = envCfg.All.Bool()
+				cleanupAll = envCfg.All
 			}
 			if !cmd.Flags().Changed("with-configmap") && envPresent("CODEXCTL_WITH_CONFIGMAP") {
-				withConfigMap = envCfg.WithConfigMap.Bool()
+				withConfigMap = envCfg.WithConfigMap
 			}
 
 			envName := opts.Env
@@ -129,16 +129,16 @@ func newManageEnvCleanupPRCommand(opts *Options) *cobra.Command {
 				repo = strings.TrimSpace(envCfg.Repo)
 			}
 			if !cmd.Flags().Changed("with-configmap") && envPresent("CODEXCTL_WITH_CONFIGMAP") {
-				withConfigMap = envCfg.WithConfigMap.Bool()
+				withConfigMap = envCfg.WithConfigMap
 			}
 			if !cmd.Flags().Changed("delete-branch") && envPresent("CODEXCTL_DELETE_BRANCH") {
-				deleteBranch = envCfg.DeleteBranch.Bool()
+				deleteBranch = envCfg.DeleteBranch
 			}
 			if !cmd.Flags().Changed("close-issue") && envPresent("CODEXCTL_CLOSE_ISSUE") {
-				closeIssue = envCfg.CloseIssue.Bool()
+				closeIssue = envCfg.CloseIssue
 			}
 			if !cmd.Flags().Changed("include-ai-repair") && envPresent("CODEXCTL_INCLUDE_AI_REPAIR") {
-				includeRepair = envCfg.IncludeAIRepair.Bool()
+				includeRepair = envCfg.IncludeAIRepair
 			}
 			if pr <= 0 {
 				return fmt.Errorf("pr number must be specified")
@@ -222,10 +222,10 @@ func newManageEnvCleanupIssueCommand(opts *Options) *cobra.Command {
 				repo = strings.TrimSpace(envCfg.Repo)
 			}
 			if !cmd.Flags().Changed("with-configmap") && envPresent("CODEXCTL_WITH_CONFIGMAP") {
-				withConfigMap = envCfg.WithConfigMap.Bool()
+				withConfigMap = envCfg.WithConfigMap
 			}
 			if !cmd.Flags().Changed("delete-branch") && envPresent("CODEXCTL_DELETE_BRANCH") {
-				deleteBranch = envCfg.DeleteBranch.Bool()
+				deleteBranch = envCfg.DeleteBranch
 			}
 			if issue <= 0 {
 				return fmt.Errorf("issue number must be specified")
@@ -300,7 +300,7 @@ func newManageEnvCloseLinkedIssueCommand(opts *Options) *cobra.Command {
 				repo = strings.TrimSpace(envCfg.Repo)
 			}
 			if !cmd.Flags().Changed("close-issue") && envPresent("CODEXCTL_CLOSE_ISSUE") {
-				closeIssue = envCfg.CloseIssue.Bool()
+				closeIssue = envCfg.CloseIssue
 			}
 			if !closeIssue {
 				return nil
