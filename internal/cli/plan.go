@@ -116,6 +116,14 @@ type ghIssue struct {
 	Labels []ghIssueLabel `json:"labels"`
 }
 
+type ghPR struct {
+	Number int            `json:"number"`
+	Title  string         `json:"title"`
+	State  string         `json:"state"`
+	URL    string         `json:"url"`
+	Labels []ghIssueLabel `json:"labels"`
+}
+
 // lookupGitHubToken finds a token from known environment variables.
 func lookupGitHubToken() (string, error) {
 	candidates := []string{
@@ -160,6 +168,37 @@ func fetchIssueJSON(ctx context.Context, logger *slog.Logger, token, repo string
 	}
 
 	return &issue, nil
+}
+
+// fetchPRJSON returns PR data using the gh CLI.
+func fetchPRJSON(ctx context.Context, logger *slog.Logger, token, repo string, number int) (*ghPR, error) {
+	args := []string{
+		"pr", "view", strconv.Itoa(number),
+		"--repo", repo,
+		"--json", "number,title,state,url,labels",
+	}
+
+	logger.Info("querying GitHub PR via gh", "repo", repo, "pr", number, "args", args)
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = os.Stderr
+
+	envVars := os.Environ()
+	envVars = append(envVars, "GITHUB_TOKEN="+token, "GH_TOKEN="+token)
+	cmd.Env = envVars
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("gh pr view for PR %d failed: %w", number, err)
+	}
+
+	var pr ghPR
+	if err := json.Unmarshal(stdout.Bytes(), &pr); err != nil {
+		return nil, fmt.Errorf("decode gh pr view output: %w", err)
+	}
+
+	return &pr, nil
 }
 
 // resolveRootIssueNumber finds the root planning issue via label or body marker.

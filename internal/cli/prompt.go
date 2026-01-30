@@ -111,7 +111,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 
 			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 
-			applyIssueCodexOverrides(cmd.Context(), logger, envName, issue, stackCfg, &ctxData)
+			applyIssueCodexOverrides(cmd.Context(), logger, envName, issue, pr, stackCfg, &ctxData)
 			applyIssueContext(cmd.Context(), logger, envName, issue, pr, ctxData.EnvMap["FOCUS_ISSUE_NUMBER"], &ctxData)
 			if strings.TrimSpace(modelOverride) != "" {
 				model, err := normalizeModel(modelOverride)

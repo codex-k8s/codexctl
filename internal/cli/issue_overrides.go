@@ -24,46 +24,60 @@ var allowedReasoningEffort = map[string]string{
 	"xhigh":  "Extra high reasoning depth for complex problems.",
 }
 
-// applyIssueCodexOverrides updates model/reasoning based on issue labels.
+// applyIssueCodexOverrides updates model/reasoning based on Issue labels, or PR labels when Issue is absent.
 func applyIssueCodexOverrides(
 	ctx context.Context,
 	logger *slog.Logger,
 	envName string,
 	issue int,
+	pr int,
 	stackCfg *config.StackConfig,
 	ctxData *config.TemplateContext,
 ) {
-	if envName != "ai" || issue <= 0 || ctxData == nil {
+	if envName != "ai" || ctxData == nil || (issue <= 0 && pr <= 0) {
 		return
 	}
 
 	repo := strings.TrimSpace(os.Getenv("GITHUB_REPOSITORY"))
 	if repo == "" {
-		logger.Warn("GitHub repository is not set; skipping codex overrides", "issue", issue)
+		logger.Warn("GitHub repository is not set; skipping codex overrides", "issue", issue, "pr", pr)
 		return
 	}
 
 	token, err := lookupGitHubToken()
 	if err != nil {
-		logger.Warn("GitHub token missing; skipping codex overrides", "issue", issue, "error", err)
+		logger.Warn("GitHub token missing; skipping codex overrides", "issue", issue, "pr", pr, "error", err)
 		return
 	}
 
-	issueData, err := fetchIssueJSON(ctx, logger, token, repo, issue)
-	if err != nil {
-		logger.Warn("failed to query issue labels; skipping codex overrides", "issue", issue, "repo", repo, "error", err)
+	var labels []ghIssueLabel
+	if issue > 0 {
+		issueData, err := fetchIssueJSON(ctx, logger, token, repo, issue)
+		if err != nil {
+			logger.Warn("failed to query issue labels; skipping codex overrides", "issue", issue, "repo", repo, "error", err)
+			return
+		}
+		labels = issueData.Labels
+	} else if pr > 0 {
+		prData, err := fetchPRJSON(ctx, logger, token, repo, pr)
+		if err != nil {
+			logger.Warn("failed to query PR labels; skipping codex overrides", "pr", pr, "repo", repo, "error", err)
+			return
+		}
+		labels = prData.Labels
+	} else {
 		return
 	}
 
-	if model, ok := resolveModelOverride(issueData.Labels); ok {
+	if model, ok := resolveModelOverride(labels); ok {
 		ctxData.Codex.Model = model
 		if stackCfg != nil {
 			stackCfg.Codex.Model = model
 		}
-		logger.Info("overriding codex model from issue labels", "issue", issue, "model", model)
+		logger.Info("overriding codex model from labels", "issue", issue, "pr", pr, "model", model)
 	}
 
-	effort, ok := resolveReasoningEffort(issueData.Labels)
+	effort, ok := resolveReasoningEffort(labels)
 	if !ok {
 		return
 	}
@@ -72,7 +86,7 @@ func applyIssueCodexOverrides(
 	if stackCfg != nil {
 		stackCfg.Codex.ModelReasoningEffort = effort
 	}
-	logger.Info("overriding codex model reasoning effort from issue labels", "issue", issue, "effort", effort)
+	logger.Info("overriding codex model reasoning effort from labels", "issue", issue, "pr", pr, "effort", effort)
 }
 
 func normalizeReasoningEffort(input string) (string, error) {
