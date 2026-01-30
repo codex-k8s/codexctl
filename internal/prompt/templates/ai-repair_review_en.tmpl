@@ -91,7 +91,7 @@ Unresolved review comments (current):
 
 How to reply:
 - Include the comment IDs (#ID) in your replies.
-  Example: `gh api -X POST repos/$GITHUB_REPOSITORY/pulls/comments/ID/replies -f body='...'`.
+  Example: `gh api -X POST repos/$CODEXCTL_REPO/pulls/comments/ID/replies -f body='...'`.
 {{- else }}
 
 There are no unresolved review comments (or they are hidden/minimized). Gather full context from the PR and the source Issue and continue the work.
@@ -129,15 +129,15 @@ Additional source of up-to-date info:
 
 Context for review:
 - Read the requirements in `./AGENTS.md` and all related documents in the repository.
-- Repository slug is in `GITHUB_REPOSITORY`.
+- Repository slug is in `CODEXCTL_REPO`.
 - PR number is in `CODEXCTL_PR_NUMBER`.
 - Use:
-  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
-  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` for an overview.
-  - If needed: `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/reviews` and
-    `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/comments`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$CODEXCTL_REPO"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$CODEXCTL_REPO"` for an overview.
+  - If needed: `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` and
+    `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/comments`.
 - If `CODEXCTL_ISSUE_NUMBER` is set, fetch the source issue context:
-  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 
 Responsibilities:
 1) Understand the PR and remarks:

@@ -54,10 +54,13 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 				return fmt.Errorf("resolve-root requires a positive --issue number")
 			}
 			if strings.TrimSpace(repo) == "" {
-				repo = os.Getenv("GITHUB_REPOSITORY")
+				repo = strings.TrimSpace(os.Getenv("CODEXCTL_REPO"))
+				if repo == "" {
+					repo = os.Getenv("GITHUB_REPOSITORY")
+				}
 			}
 			if strings.TrimSpace(repo) == "" {
-				return fmt.Errorf("resolve-root requires --repo or GITHUB_REPOSITORY env")
+				return fmt.Errorf("resolve-root requires --repo or CODEXCTL_REPO env")
 			}
 
 			token, err := lookupGitHubToken()
@@ -90,7 +93,7 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&issue, "issue", 0, "Focus issue number to resolve the root planner for (required)")
-	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository slug owner/repo (defaults to GITHUB_REPOSITORY)")
+	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository slug owner/repo (defaults to CODEXCTL_REPO)")
 
 	return cmd
 }

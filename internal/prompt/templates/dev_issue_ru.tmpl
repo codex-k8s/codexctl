@@ -99,9 +99,9 @@
 
 Текущая задача (работа по Issue):
 - Прочитайте требования в `./AGENTS.md` и всех связанных документах в репозитории.
-- Слаг репозитория доступен в `GITHUB_REPOSITORY` (например, `owner/repo`).
+- Слаг репозитория доступен в `CODEXCTL_REPO` (например, `owner/repo`).
 - Получите полный контекст Issue через GitHub CLI:
-  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 - Изучите описание Issue, комментарии и метки, а также документацию проекта и релевантный код.
 - Если после изучения Issue, кода и документации понятно что требования неполные, есть противоречия или неопределённости, оставьте развернутый комментарий в Issue с вопросами и вариантами решений на выбор (3-5 вариантов).
 - После правок кода проверьте логи ключевых подов и нужные эндпоинты через kubectl/curl/httpie.

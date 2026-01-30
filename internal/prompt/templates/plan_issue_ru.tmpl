@@ -90,9 +90,9 @@
 
 Исходный Issue для планирования:
 - Прочитайте требования в `./AGENTS.md` и связанные документы.
-- Слаг репозитория доступен в `GITHUB_REPOSITORY` (например, `owner/repo`).
+- Слаг репозитория доступен в `CODEXCTL_REPO` (например, `owner/repo`).
 - Получите полный контекст Issue:
-  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 - По описанию, комментариям и меткам поймите, какую задачу хочет решить пользователь.
 - Проанализируйте структуру репозитория и ключевые части кода, чтобы оценить реальный объём работ.
 - Если нужно, изучите логи/метрики/конфигурации/БД в выделенном окружении для понимания текущего состояния.

@@ -99,9 +99,9 @@ Additional source of up-to-date information:
 
 Current task (issue-based work):
 - Read the requirements in `./AGENTS.md` and all related documents in the repository.
-- The repository slug is available in `GITHUB_REPOSITORY` (for example, `owner/repo`).
+- The repository slug is available in `CODEXCTL_REPO` (for example, `owner/repo`).
 - Get full issue context via GitHub CLI:
-  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 - Study the Issue description, comments and labels, as well as project documentation and relevant code.
 - If after studying the Issue, code, and documentation you find incomplete requirements, contradictions, or uncertainties,
   leave a detailed comment in the Issue with questions and solution options to choose from (3-5 options).

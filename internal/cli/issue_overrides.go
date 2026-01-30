@@ -38,7 +38,10 @@ func applyIssueCodexOverrides(
 		return
 	}
 
-	repo := strings.TrimSpace(os.Getenv("GITHUB_REPOSITORY"))
+	repo := strings.TrimSpace(os.Getenv("CODEXCTL_REPO"))
+	if repo == "" {
+		repo = strings.TrimSpace(os.Getenv("GITHUB_REPOSITORY"))
+	}
 	if repo == "" {
 		logger.Warn("GitHub repository is not set; skipping codex overrides", "issue", issue, "pr", pr)
 		return

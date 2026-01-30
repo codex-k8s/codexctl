@@ -90,9 +90,9 @@ Additional source of up-to-date information:
 
 Source Issue for planning:
 - Read the requirements in `./AGENTS.md` and related documents.
-- The repository slug is available in `GITHUB_REPOSITORY` (for example, `owner/repo`).
+- The repository slug is available in `CODEXCTL_REPO` (for example, `owner/repo`).
 - Fetch full Issue context:
-  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 - Based on the description, comments and labels, understand what problem the user wants to solve.
 - Analyze the repository structure and key parts of the code to estimate the real scope of work.
 - If needed, inspect logs/metrics/config/DB in the dedicated environment to understand the current state.

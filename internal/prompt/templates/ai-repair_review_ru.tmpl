@@ -91,7 +91,7 @@
 
 Как отвечать:
 - Указывайте ID комментариев (#ID) в ответах.
-  Пример: `gh api -X POST repos/$GITHUB_REPOSITORY/pulls/comments/ID/replies -f body='...'`.
+  Пример: `gh api -X POST repos/$CODEXCTL_REPO/pulls/comments/ID/replies -f body='...'`.
 {{- else }}
 
 Нерешённых комментариев нет (или они скрыты), собери весь контекст из PR и исходного Issue и продолжай работу.
@@ -129,15 +129,15 @@
 
 Контекст для восстановления и review:
 - Прочитай требования в `./AGENTS.md` и всех связанных документах в репозитории.
-- Слаг репозитория — в `GITHUB_REPOSITORY`.
+- Слаг репозитория — в `CODEXCTL_REPO`.
 - Номер PR — в `CODEXCTL_PR_NUMBER`.
 - Используй:
-  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
-  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` для обзора.
-  - При необходимости: `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/reviews` и
-    `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/comments` для подробных нитей.
+  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$CODEXCTL_REPO"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$CODEXCTL_REPO"` для обзора.
+  - При необходимости: `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` и
+    `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/comments` для подробных нитей.
 - Если задан `CODEXCTL_ISSUE_NUMBER`, получи контекст исходной задачи:
-  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 
 Твои обязанности:
 1) Понять PR и замечания:

@@ -10,6 +10,7 @@ import (
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/engine"
 	"github.com/codex-k8s/codexctl/internal/env"
+	"github.com/codex-k8s/codexctl/internal/kube"
 	"github.com/codex-k8s/codexctl/internal/state"
 )
 
@@ -85,6 +86,8 @@ type ensureReadyResult struct {
 	recreated bool
 	// infraReady indicates whether infra rollout was successful.
 	infraReady bool
+	// envReady indicates whether the existing environment looks ready to run Codex.
+	envReady bool
 }
 
 // ensureSlot allocates or resolves an environment slot based on selectors.
@@ -293,8 +296,38 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 		}
 	}
 
+	res.envReady = false
+	if slotRes.store != nil && slotRes.store.kubeClient != nil && strings.TrimSpace(rec.Namespace) != "" {
+		ctxReady, cancelReady := context.WithTimeout(ctx, 20*time.Second)
+		defer cancelReady()
+		ready, err := checkEnvReady(ctxReady, slotRes.store.kubeClient, rec.Namespace, "codex")
+		if err != nil {
+			logger.Debug("failed to check existing environment readiness", "namespace", rec.Namespace, "slot", rec.Slot, "env", rec.Env, "error", err)
+		}
+		res.envReady = ready
+	}
+
 	res.record = rec
 	res.created = created
 	res.recreated = recreated
 	return res, nil
+}
+
+func checkEnvReady(ctx context.Context, client *kube.Client, namespace, deployment string) (bool, error) {
+	if client == nil {
+		return false, fmt.Errorf("kubernetes client is nil")
+	}
+	if strings.TrimSpace(namespace) == "" {
+		return false, fmt.Errorf("namespace is empty")
+	}
+	if strings.TrimSpace(deployment) == "" {
+		return false, fmt.Errorf("deployment name is empty")
+	}
+	if _, err := client.RunAndCapture(ctx, nil, "get", "ns", namespace); err != nil {
+		return false, err
+	}
+	if _, err := client.RunAndCapture(ctx, nil, "-n", namespace, "get", "deploy", deployment); err != nil {
+		return false, err
+	}
+	return true, nil
 }

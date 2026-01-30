@@ -53,10 +53,10 @@ func newCIImagesCommand(opts *Options) *cobra.Command {
 				slot = envVars.Slot
 			}
 			if !cmd.Flags().Changed("mirror") && envPresent("CODEXCTL_MIRROR_IMAGES") {
-				mirror = envVars.MirrorImages
+				mirror = envVars.MirrorImages.Bool()
 			}
 			if !cmd.Flags().Changed("build") && envPresent("CODEXCTL_BUILD_IMAGES") {
-				build = envVars.BuildImages
+				build = envVars.BuildImages.Bool()
 			}
 
 			stackCfg, tmplCtx, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
@@ -117,10 +117,10 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 				slot = envVars.Slot
 			}
 			if !cmd.Flags().Changed("preflight") && envPresent("CODEXCTL_PREFLIGHT") {
-				preflight = envVars.Preflight
+				preflight = envVars.Preflight.Bool()
 			}
 			if !cmd.Flags().Changed("wait") && envPresent("CODEXCTL_WAIT") {
-				wait = envVars.Wait
+				wait = envVars.Wait.Bool()
 			}
 			if !cmd.Flags().Changed("apply-retries") && envPresent("CODEXCTL_APPLY_RETRIES") {
 				applyRetries = envVars.ApplyRetries
@@ -371,19 +371,19 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				source = envCfg.Source
 			}
 			if !cmd.Flags().Changed("prepare-images") && envPresent("CODEXCTL_PREPARE_IMAGES") {
-				prepareImages = envCfg.PrepareImages
+				prepareImages = envCfg.PrepareImages.Bool()
 			}
 			if !cmd.Flags().Changed("apply") && envPresent("CODEXCTL_APPLY") {
-				doApply = envCfg.Apply
+				doApply = envCfg.Apply.Bool()
 			}
 			if !cmd.Flags().Changed("force-apply") && envPresent("CODEXCTL_FORCE_APPLY") {
-				forceApply = envCfg.ForceApply
+				forceApply = envCfg.ForceApply.Bool()
 			}
 			if !cmd.Flags().Changed("wait-timeout") && envPresent("CODEXCTL_WAIT_TIMEOUT") {
 				waitTimeout = envCfg.WaitTimeout
 			}
 			if !cmd.Flags().Changed("wait-soft-fail") && envPresent("CODEXCTL_WAIT_SOFT_FAIL") {
-				waitSoftFail = envCfg.WaitSoftFail
+				waitSoftFail = envCfg.WaitSoftFail.Bool()
 			}
 
 			inlineVars, varFiles, err := parseInlineVarsAndFiles(cmd)
@@ -412,26 +412,31 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			newEnv := res.created || res.recreated
 			writeErr := ghoutput.Write(map[string]string{
-				"slot":              strconv.Itoa(res.record.Slot),
-				"namespace":         res.record.Namespace,
-				"env":               res.record.Env,
-				"created":           strconv.FormatBool(res.created),
-				"recreated":         strconv.FormatBool(res.recreated),
-				"infra_ready":       strconv.FormatBool(res.infraReady),
-				"codexctl_run_args": buildCodexctlRunArgs(res.record, issue, pr, opts.Env),
+				"slot":               strconv.Itoa(res.record.Slot),
+				"namespace":          res.record.Namespace,
+				"env":                res.record.Env,
+				"created":            strconv.FormatBool(res.created),
+				"recreated":          strconv.FormatBool(res.recreated),
+				"infra_ready":        strconv.FormatBool(res.infraReady),
+				"CODEXCTL_ENV_READY": strconv.FormatBool(res.envReady),
+				"CODEXCTL_NEW_ENV":   strconv.FormatBool(newEnv),
+				"codexctl_run_args":  buildCodexctlRunArgs(res.record, issue, pr, opts.Env),
 			})
 			if writeErr != nil {
 				return writeErr
 			}
 			fmt.Printf(
-				"slot: %d\nnamespace: %s\nenv: %s\ncreated: %t\nrecreated: %t\ninfra_ready: %t\n",
+				"slot: %d\nnamespace: %s\nenv: %s\ncreated: %t\nrecreated: %t\ninfra_ready: %t\nenv_ready: %t\nnew_env: %t\n",
 				res.record.Slot,
 				res.record.Namespace,
 				res.record.Env,
 				res.created,
 				res.recreated,
 				res.infraReady,
+				res.envReady,
+				newEnv,
 			)
 			return nil
 		},

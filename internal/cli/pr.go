@@ -73,9 +73,12 @@ func newPRReviewApplyCommand(opts *Options) *cobra.Command {
 				return fmt.Errorf("review-apply requires --code-root-base or CODEXCTL_CODE_ROOT_BASE env")
 			}
 
-			repo := os.Getenv("GITHUB_REPOSITORY")
+			repo := strings.TrimSpace(os.Getenv("CODEXCTL_REPO"))
+			if repo == "" {
+				repo = os.Getenv("GITHUB_REPOSITORY")
+			}
 			if strings.TrimSpace(repo) == "" {
-				return fmt.Errorf("review-apply requires GITHUB_REPOSITORY env")
+				return fmt.Errorf("review-apply requires CODEXCTL_REPO env")
 			}
 
 			if lang == "" {

@@ -65,7 +65,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 			}
 
 			if !cmd.Flags().Changed("infra-unhealthy") && envPresent("CODEXCTL_INFRA_UNHEALTHY") {
-				infraUnhealthy = envVars.InfraUnhealthy
+				infraUnhealthy = envVars.InfraUnhealthy.Bool()
 			}
 			if infraUnhealthy {
 				inlineVars["CODEXCTL_INFRA_UNHEALTHY"] = "1"
@@ -186,7 +186,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 
 			resumeFlag, _ := cmd.Flags().GetBool("resume")
 			if !cmd.Flags().Changed("resume") && envPresent("CODEXCTL_RESUME") {
-				resumeFlag = envVars.Resume
+				resumeFlag = envVars.Resume.Bool()
 			}
 			promptMode := strings.TrimSpace(ctxData.EnvMap["CODEXCTL_PROMPT_MODE"])
 			if promptMode == "" {
@@ -196,8 +196,15 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 					promptMode = "full"
 				}
 			}
-			if strings.TrimSpace(ctxData.EnvMap["CODEXCTL_PROMPT_CONTINUATION"]) != "" {
-				promptMode = "full"
+			if raw := strings.TrimSpace(ctxData.EnvMap["CODEXCTL_PROMPT_CONTINUATION"]); raw != "" {
+				if enabled, ok := parseEnvBool(raw); ok {
+					if enabled {
+						promptMode = "full"
+					}
+				} else {
+					logger.Warn("invalid CODEXCTL_PROMPT_CONTINUATION value, assuming enabled", "value", raw)
+					promptMode = "full"
+				}
 			}
 			if promptMode != "" {
 				ctxData.EnvMap["CODEXCTL_PROMPT_MODE"] = promptMode
