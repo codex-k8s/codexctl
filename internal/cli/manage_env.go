@@ -697,7 +697,7 @@ func runEnvCleanup(
 	stateNS := envStore.stackCfg.State.ConfigMapNamespace
 
 	for _, rec := range records {
-		if envName != "" && rec.Env != envName {
+		if rec.Env != envName {
 			continue
 		}
 		if !cleanupAll {

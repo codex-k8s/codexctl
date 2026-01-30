@@ -71,7 +71,7 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			issueData, err := fetchIssueJSON(ctx, logger, token, repo, issue)
+			issueData, err := fetchGitHubEntity[ghIssue](ctx, logger, token, repo, "issue", "number,title,state,body,url,labels", issue)
 			if err != nil {
 				return err
 			}
@@ -141,15 +141,9 @@ func lookupGitHubToken() (string, error) {
 	return "", fmt.Errorf("GitHub token is required; set CODEXCTL_GH_PAT or GH_TOKEN or GITHUB_TOKEN")
 }
 
-// fetchIssueJSON returns issue data using the gh CLI.
-func fetchIssueJSON(ctx context.Context, logger *slog.Logger, token, repo string, number int) (*ghIssue, error) {
-	args := []string{
-		"issue", "view", strconv.Itoa(number),
-		"--repo", repo,
-		"--json", "number,title,state,body,url,labels",
-	}
-
-	logger.Info("querying GitHub issue via gh", "repo", repo, "issue", number, "args", args)
+// runGHJSON executes a gh command and returns its stdout as JSON bytes.
+func runGHJSON(ctx context.Context, logger *slog.Logger, token string, args []string, logFields ...any) ([]byte, error) {
+	logger.Info("querying GitHub via gh", logFields...)
 
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	var stdout bytes.Buffer
@@ -161,46 +155,36 @@ func fetchIssueJSON(ctx context.Context, logger *slog.Logger, token, repo string
 	cmd.Env = envVars
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("gh issue view for issue %d failed: %w", number, err)
+		return nil, err
 	}
 
-	var issue ghIssue
-	if err := json.Unmarshal(stdout.Bytes(), &issue); err != nil {
-		return nil, fmt.Errorf("decode gh issue view output: %w", err)
-	}
-
-	return &issue, nil
+	return stdout.Bytes(), nil
 }
 
-// fetchPRJSON returns PR data using the gh CLI.
-func fetchPRJSON(ctx context.Context, logger *slog.Logger, token, repo string, number int) (*ghPR, error) {
+// fetchGitHubJSON runs a gh view command and decodes its JSON response.
+func fetchGitHubJSON[T any](ctx context.Context, logger *slog.Logger, token, repo, entity string, number int, args []string) (*T, error) {
+	payload, err := runGHJSON(ctx, logger, token, args, "repo", repo, entity, number, "args", args)
+	if err != nil {
+		return nil, fmt.Errorf("gh %s view for %s %d failed: %w", entity, entity, number, err)
+	}
+
+	var out T
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return nil, fmt.Errorf("decode gh %s view output: %w", entity, err)
+	}
+
+	return &out, nil
+}
+
+// fetchGitHubEntity builds gh view args for an entity and decodes the response.
+func fetchGitHubEntity[T any](ctx context.Context, logger *slog.Logger, token, repo, entity, fields string, number int) (*T, error) {
 	args := []string{
-		"pr", "view", strconv.Itoa(number),
+		entity, "view", strconv.Itoa(number),
 		"--repo", repo,
-		"--json", "number,title,state,url,labels",
+		"--json", fields,
 	}
 
-	logger.Info("querying GitHub PR via gh", "repo", repo, "pr", number, "args", args)
-
-	cmd := exec.CommandContext(ctx, "gh", args...)
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = os.Stderr
-
-	envVars := os.Environ()
-	envVars = append(envVars, "GITHUB_TOKEN="+token, "GH_TOKEN="+token)
-	cmd.Env = envVars
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("gh pr view for PR %d failed: %w", number, err)
-	}
-
-	var pr ghPR
-	if err := json.Unmarshal(stdout.Bytes(), &pr); err != nil {
-		return nil, fmt.Errorf("decode gh pr view output: %w", err)
-	}
-
-	return &pr, nil
+	return fetchGitHubJSON[T](ctx, logger, token, repo, entity, number, args)
 }
 
 // resolveRootIssueNumber finds the root planning issue via label or body marker.

@@ -55,21 +55,19 @@ func applyIssueCodexOverrides(
 
 	var labels []ghIssueLabel
 	if issue > 0 {
-		issueData, err := fetchIssueJSON(ctx, logger, token, repo, issue)
+		issueData, err := fetchGitHubEntity[ghIssue](ctx, logger, token, repo, "issue", "number,title,state,body,url,labels", issue)
 		if err != nil {
 			logger.Warn("failed to query issue labels; skipping codex overrides", "issue", issue, "repo", repo, "error", err)
 			return
 		}
 		labels = issueData.Labels
-	} else if pr > 0 {
-		prData, err := fetchPRJSON(ctx, logger, token, repo, pr)
+	} else {
+		prData, err := fetchGitHubEntity[ghPR](ctx, logger, token, repo, "pr", "number,title,state,url,labels", pr)
 		if err != nil {
 			logger.Warn("failed to query PR labels; skipping codex overrides", "pr", pr, "repo", repo, "error", err)
 			return
 		}
 		labels = prData.Labels
-	} else {
-		return
 	}
 
 	if model, ok := resolveModelOverride(labels); ok {
