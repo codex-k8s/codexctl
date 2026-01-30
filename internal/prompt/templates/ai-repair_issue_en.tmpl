@@ -16,7 +16,7 @@ Environment context:
 - The working directory inside the container is mounted with the project sources.
 {{- if .Codex.ProjectContext }}
 
-Project context:
+Project context/requirements:
 {{ .Codex.ProjectContext }}
 {{- end }}
 {{- if .Codex.ServicesOverview }}
