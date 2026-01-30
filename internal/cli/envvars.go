@@ -55,6 +55,8 @@ type promptEnv struct {
 	Namespace          string  `env:"CODEXCTL_NAMESPACE"`
 	Kind               string  `env:"CODEXCTL_KIND"`
 	Lang               string  `env:"CODEXCTL_LANG"`
+	GHUsername         string  `env:"CODEXCTL_GH_USERNAME"`
+	GHEmail            string  `env:"CODEXCTL_GH_EMAIL"`
 	InfraUnhealthy     envBool `env:"CODEXCTL_INFRA_UNHEALTHY"`
 	Resume             envBool `env:"CODEXCTL_RESUME"`
 	Model              string  `env:"CODEXCTL_MODEL"`
@@ -82,6 +84,13 @@ type prEnv struct {
 	PR           int    `env:"CODEXCTL_PR_NUMBER"`
 	CodeRootBase string `env:"CODEXCTL_CODE_ROOT_BASE"`
 	Lang         string `env:"CODEXCTL_LANG"`
+}
+
+type commentPREnv struct {
+	Slot int    `env:"CODEXCTL_SLOT"`
+	PR   int    `env:"CODEXCTL_PR_NUMBER"`
+	Repo string `env:"CODEXCTL_REPO"`
+	Lang string `env:"CODEXCTL_LANG"`
 }
 
 type cleanupGHEnv struct {

@@ -27,10 +27,61 @@ func newCICommand(opts *Options) *cobra.Command {
 	cmd.AddCommand(
 		newCIImagesCommand(opts),
 		newCIApplyCommand(opts),
+		newCISyncSourcesCommand(opts),
 		newCIEnsureSlotCommand(opts),
 		newCIEnsureReadyCommand(opts),
 	)
 
+	return cmd
+}
+
+// newCISyncSourcesCommand creates "ci sync-sources" to sync sources into a workspace.
+func newCISyncSourcesCommand(opts *Options) *cobra.Command {
+	var (
+		slot         int
+		codeRootBase string
+		source       string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "sync-sources",
+		Short: "Sync sources into the workspace for the selected environment",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			envCfg := ciEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("code-root-base") && envPresent("CODEXCTL_CODE_ROOT_BASE") {
+				codeRootBase = envCfg.CodeRootBase
+			}
+			if !cmd.Flags().Changed("source") && envPresent("CODEXCTL_SOURCE") {
+				source = envCfg.Source
+			}
+			if strings.TrimSpace(codeRootBase) == "" {
+				return fmt.Errorf("sync-sources requires --code-root-base or CODEXCTL_CODE_ROOT_BASE env")
+			}
+			if strings.TrimSpace(source) == "" {
+				source = "."
+			}
+
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+			target, err := resolveSourceTarget(envName, slot, codeRootBase)
+			if err != nil {
+				return err
+			}
+			return syncSources(source, target)
+		},
+	}
+
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number for ai environments")
+	cmd.Flags().StringVar(&codeRootBase, "code-root-base", os.Getenv("CODEXCTL_CODE_ROOT_BASE"), "Base path for workspaces")
+	cmd.Flags().StringVar(&source, "source", ".", "Source directory to sync")
 	return cmd
 }
 
@@ -413,30 +464,41 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				return err
 			}
 			newEnv := res.created || res.recreated
+			infraUnhealthy := "0"
+			if !res.infraReady {
+				infraUnhealthy = "1"
+			}
+			createdOut := boolTo01(res.created)
+			recreatedOut := boolTo01(res.recreated)
+			infraReadyOut := boolTo01(res.infraReady)
+			envReadyOut := boolTo01(res.envReady)
+			newEnvOut := boolTo01(newEnv)
 			writeErr := ghoutput.Write(map[string]string{
 				"slot":               strconv.Itoa(res.record.Slot),
 				"namespace":          res.record.Namespace,
 				"env":                res.record.Env,
-				"created":            strconv.FormatBool(res.created),
-				"recreated":          strconv.FormatBool(res.recreated),
-				"infra_ready":        strconv.FormatBool(res.infraReady),
-				"CODEXCTL_ENV_READY": strconv.FormatBool(res.envReady),
-				"CODEXCTL_NEW_ENV":   strconv.FormatBool(newEnv),
+				"created":            createdOut,
+				"recreated":          recreatedOut,
+				"infra_ready":        infraReadyOut,
+				"codexctl_env_ready": envReadyOut,
+				"infra_unhealthy":    infraUnhealthy,
+				"codexctl_new_env":   newEnvOut,
 				"codexctl_run_args":  buildCodexctlRunArgs(res.record, issue, pr, opts.Env),
 			})
 			if writeErr != nil {
 				return writeErr
 			}
 			fmt.Printf(
-				"slot: %d\nnamespace: %s\nenv: %s\ncreated: %t\nrecreated: %t\ninfra_ready: %t\nenv_ready: %t\nnew_env: %t\n",
+				"slot: %d\nnamespace: %s\nenv: %s\ncreated: %s\nrecreated: %s\ninfra_ready: %s\ncodexctl_env_ready: %s\ninfra_unhealthy: %s\ncodexctl_new_env: %s\n",
 				res.record.Slot,
 				res.record.Namespace,
 				res.record.Env,
-				res.created,
-				res.recreated,
-				res.infraReady,
-				res.envReady,
-				newEnv,
+				createdOut,
+				recreatedOut,
+				infraReadyOut,
+				envReadyOut,
+				infraUnhealthy,
+				newEnvOut,
 			)
 			return nil
 		},
@@ -478,6 +540,13 @@ func buildCodexctlRunArgs(rec state.EnvRecord, issue, pr int, envName string) st
 		args = append(args, "--pr", strconv.Itoa(pr))
 	}
 	return strings.Join(args, " ")
+}
+
+func boolTo01(v bool) string {
+	if v {
+		return "1"
+	}
+	return "0"
 }
 
 // waitForDeployments runs kubectl wait with a request timeout wrapper.

@@ -276,15 +276,24 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				return fmt.Errorf("write Codex config inside pod: %w", err)
 			}
 
-			// Configure git and GitHub CLI inside the Codex container.
-			if err := runCodexPodShell(
-				ctxExec,
-				kubeClient,
-				ns,
+			ghUser := strings.TrimSpace(envVars.GHUsername)
+			if ghUser == "" {
+				ghUser = "codex-bot"
+			}
+			ghEmail := strings.TrimSpace(envVars.GHEmail)
+			if ghEmail == "" {
+				ghEmail = "codex-bot@codex-k8s.local"
+			}
+			gitConfigCmd := fmt.Sprintf(
 				"git config --global --add safe.directory /workspace || true; "+
-					"git config --global user.name \"codex-bot\"; "+
-					"git config --global user.email \"codex-bot@codex-k8s.local\" || true",
-			); err != nil {
+					"git config --global user.name %s; "+
+					"git config --global user.email %s || true",
+				shellQuote(ghUser),
+				shellQuote(ghEmail),
+			)
+
+			// Configure git and GitHub CLI inside the Codex container.
+			if err := runCodexPodShell(ctxExec, kubeClient, ns, gitConfigCmd); err != nil {
 				logger.Warn("failed to configure git inside Codex pod", "namespace", ns, "error", err)
 			}
 			if err := runCodexPodShell(
@@ -408,4 +417,11 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 
 	return cmd
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", `'\'\''`) + "'"
 }

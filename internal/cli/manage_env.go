@@ -34,6 +34,7 @@ func newManageEnvCommand(opts *Options) *cobra.Command {
 		newManageEnvCloseLinkedIssueCommand(opts),
 		newManageEnvSetCommand(opts),
 		newManageEnvCommentCommand(opts),
+		newManageEnvCommentPRCommand(opts),
 	)
 
 	return cmd
@@ -487,6 +488,104 @@ func newManageEnvCommentCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// newManageEnvCommentPRCommand renders and posts a comment with env links to a PR.
+func newManageEnvCommentPRCommand(opts *Options) *cobra.Command {
+	var (
+		lang string
+		slot int
+		pr   int
+		repo string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "comment-pr",
+		Short: "Post environment links to a Pull Request",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			envCfg := commentPREnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("pr") && envPresent("CODEXCTL_PR_NUMBER") {
+				pr = envCfg.PR
+			}
+			if !cmd.Flags().Changed("repo") && envPresent("CODEXCTL_REPO") {
+				repo = strings.TrimSpace(envCfg.Repo)
+			}
+			if !cmd.Flags().Changed("lang") && envPresent("CODEXCTL_LANG") {
+				lang = envCfg.Lang
+			}
+
+			if slot <= 0 {
+				return fmt.Errorf("slot must be >0")
+			}
+			if pr <= 0 {
+				return fmt.Errorf("pr number must be >0")
+			}
+
+			repo = resolveGitHubRepo(repo)
+			if strings.TrimSpace(repo) == "" {
+				return fmt.Errorf("repository is empty")
+			}
+			if lang == "" {
+				lang = "en"
+			}
+
+			envName := opts.Env
+			if envName == "" {
+				envName = "ai"
+			}
+			_, ctxData, err := config.LoadStackConfig(opts.ConfigPath, config.LoadOptions{Env: envName, Slot: slot})
+			if err != nil {
+				return err
+			}
+			siteHost := ctxData.BaseDomain[envName]
+			if envName == "ai" {
+				siteHost = fmt.Sprintf("dev-%d.%s", slot, ctxData.BaseDomain["ai"])
+			}
+
+			body, err := prompt.RenderEnvComment(strings.ToLower(lang), siteHost, slot, ctxData.Codex.Links)
+			if err != nil {
+				return err
+			}
+
+			f, err := os.CreateTemp("", "codexctl-comment-*.md")
+			if err != nil {
+				return err
+			}
+			defer os.Remove(f.Name())
+			if _, err := f.WriteString(body); err != nil {
+				_ = f.Close()
+				return err
+			}
+			if err := f.Close(); err != nil {
+				return err
+			}
+
+			token, err := lookupGitHubToken()
+			if err != nil {
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancel()
+			args := []string{"pr", "comment", strconv.Itoa(pr), "--repo", repo, "--body-file", f.Name()}
+			return runGH(ctx, token, args...)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Env, "env", "ai", "Environment (default: ai)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number (required)")
+	_ = cmd.MarkFlagRequired("slot")
+	cmd.Flags().IntVar(&pr, "pr", 0, "PR number (required)")
+	_ = cmd.MarkFlagRequired("pr")
+	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository slug owner/repo (defaults to CODEXCTL_REPO)")
+	cmd.Flags().StringVar(&lang, "lang", "en", "Language for the comment (en|ru)")
+	return cmd
+}
+
 var codexBranchRE = regexp.MustCompile(`^codex/(issue|ai-repair)-([0-9]+)$`)
 
 func parseCodexBranch(branch string) (string, int, bool) {
@@ -512,6 +611,27 @@ func resolveGitHubRepo(repo string) string {
 		return v
 	}
 	return strings.TrimSpace(os.Getenv("GITHUB_REPOSITORY"))
+}
+
+func resolveSourceTarget(envName string, slot int, codeRootBase string) (string, error) {
+	base := strings.TrimSuffix(codeRootBase, string(os.PathSeparator))
+	if strings.TrimSpace(base) == "" {
+		return "", fmt.Errorf("code root base is empty")
+	}
+	if envName == "" {
+		envName = "ai"
+	}
+	switch envName {
+	case "ai":
+		if slot <= 0 {
+			return "", fmt.Errorf("slot must be >0 for env=%q", envName)
+		}
+		return filepath.Join(base, strconv.Itoa(slot), "src"), nil
+	case "ai-repair":
+		return filepath.Join(base, "staging", "src"), nil
+	default:
+		return filepath.Join(base, envName, "src"), nil
+	}
 }
 
 func deleteGitBranch(ctx context.Context, logger *slog.Logger, token, repo, branch string) error {
