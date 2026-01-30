@@ -193,6 +193,10 @@ These labels can be applied together (multiple at once):
 - `idea` — brainstorming/elaborating an idea (multiple variants, questions, discussion in comments);
 - `epic` — a large epic task, split into subtasks.
 
+3) **Model/reasoning configuration labels** — allow selecting the agent model and reasoning effort:
+- model: `[ai-model-gpt-5.2-codex]`, `[ai-model-gpt-5.2]`, `[ai-model-gpt-5.1-codex-max]`, `[ai-model-gpt-5.1-codex-mini]`;
+- reasoning: `[ai-reasoning-low]`, `[ai-reasoning-medium]`, `[ai-reasoning-high]`, `[ai-reasoning-extra-high]`.
+
 How this is used in agent instructions:
 - In **planning** modes (`[ai-plan]`), the agent uses these labels to structure the plan (feature/bug/doc/debt/idea) and may
   create new Issues/epics/subtasks *only if the user asks for that format*. To link child tasks, the marker
@@ -661,6 +665,9 @@ Commands for working with Codex agent prompts:
 Notes:
 
 - `prompt run` supports `--issue`/`--pr` context, `--resume` mode, `--infra-unhealthy`, plus `--vars`, `--var-file`.
+- You can also set model and reasoning effort via `--model` and `--reasoning-effort`.
+- Allowed models: `gpt-5.2-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`.
+- Allowed reasoning effort values: `low`, `medium`, `high`, `extra-high`.
 - `--template` overrides `--kind`; if `--kind` is not set, `dev_issue` is used by default.
 
 ### 🧭 5.8. `plan`

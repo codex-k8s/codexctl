@@ -27,6 +27,8 @@ func newPromptCommand(opts *Options) *cobra.Command {
 // inside a Kubernetes pod using the rendered configuration and prompt.
 func newPromptRunCommand(opts *Options) *cobra.Command {
 	var infraUnhealthy bool
+	var modelOverride string
+	var reasoningOverride string
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run a Codex agent inside a Kubernetes environment",
@@ -109,8 +111,40 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 
 			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 
-			applyIssueReasoningEffortOverride(cmd.Context(), logger, envName, issue, stackCfg, &ctxData)
+			applyIssueCodexOverrides(cmd.Context(), logger, envName, issue, stackCfg, &ctxData)
 			applyIssueContext(cmd.Context(), logger, envName, issue, pr, ctxData.EnvMap["FOCUS_ISSUE_NUMBER"], &ctxData)
+			if strings.TrimSpace(modelOverride) != "" {
+				model, err := normalizeModel(modelOverride)
+				if err != nil {
+					return err
+				}
+				ctxData.Codex.Model = model
+				stackCfg.Codex.Model = model
+			}
+			if strings.TrimSpace(reasoningOverride) != "" {
+				effort, err := normalizeReasoningEffort(reasoningOverride)
+				if err != nil {
+					return err
+				}
+				ctxData.Codex.ModelReasoningEffort = effort
+				stackCfg.Codex.ModelReasoningEffort = effort
+			}
+			if strings.TrimSpace(ctxData.Codex.Model) != "" {
+				model, err := normalizeModel(ctxData.Codex.Model)
+				if err != nil {
+					return err
+				}
+				ctxData.Codex.Model = model
+				stackCfg.Codex.Model = model
+			}
+			if strings.TrimSpace(ctxData.Codex.ModelReasoningEffort) != "" {
+				effort, err := normalizeReasoningEffort(ctxData.Codex.ModelReasoningEffort)
+				if err != nil {
+					return err
+				}
+				ctxData.Codex.ModelReasoningEffort = effort
+				stackCfg.Codex.ModelReasoningEffort = effort
+			}
 
 			resumeFlag, _ := cmd.Flags().GetBool("resume")
 			promptMode := strings.TrimSpace(ctxData.EnvMap["PROMPT_MODE"])
@@ -277,6 +311,12 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				"PROMPT=$(printf %s \"$PROMPT_B64\" | base64 -d); " +
 				"echo \"debug: prompt length bytes=${#PROMPT}\" >&2; " +
 				"npx -y @openai/codex exec \"$PROMPT\" --cd /workspace --json"
+			if ctxData.Codex.Model != "" {
+				execCmd = execCmd + fmt.Sprintf(" -m %s", ctxData.Codex.Model)
+			}
+			if ctxData.Codex.ModelReasoningEffort != "" {
+				execCmd = execCmd + fmt.Sprintf(" --config model_reasoning_effort=%q", ctxData.Codex.ModelReasoningEffort)
+			}
 			if resumeFlag {
 				execCmd = execCmd + " resume --last"
 			}
@@ -311,6 +351,8 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 	cmd.Flags().String("template", "", "Path to prompt template file (overrides --kind when set)")
 	cmd.Flags().String("lang", "", "Prompt language (e.g. en, ru); overrides CODEX_PROMPT_LANG and defaults to en")
 	cmd.Flags().BoolVar(&infraUnhealthy, "infra-unhealthy", false, "Mark infrastructure as unhealthy in prompt context")
+	cmd.Flags().StringVar(&modelOverride, "model", "", "Override Codex model (gpt-5.2-codex|gpt-5.2|gpt-5.1-codex-max|gpt-5.1-codex-mini)")
+	cmd.Flags().StringVar(&reasoningOverride, "reasoning-effort", "", "Override model reasoning effort (low|medium|high|extra-high)")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 
