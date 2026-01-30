@@ -23,7 +23,7 @@
 
 > Важно: утилита находится на ранней стадии разработки, см. раздел «Безопасность и стабильность» в конце.
 
-## 🎯 0. Цель и идеальный DX для AI‑агента
+## 🎯 Цель и идеальный DX для AI‑агента
 
 `codexctl` задуман как «кнопка» для облачной ИИ‑разработки и планирования в Kubernetes: по Issue/PR поднимается изолированное
 окружение (namespace/слот) с тем же стеком, что у проекта (сервисы, БД, кэши, очереди, ingress, observability), а агент
@@ -42,6 +42,13 @@
 
 ## 📦 Установка
 
+Требования к локальному Go‑toolchain:
+
+- Go **>= 1.25.1** (см. `go.mod`).
+
+Инструкцию по подготовке VPS/self-hosted runner (microk8s, Docker, kubectl, gh, rsync и т.д.) см. в:
+https://github.com/codex-k8s/project-example/blob/main/README_RU.md
+
 `codexctl` распространяется как Go‑CLI. При установленном Go‑toolchain его можно поставить командой:
 
 ```bash
@@ -55,6 +62,36 @@ go install github.com/codex-k8s/codexctl/cmd/codexctl@v999.999.999
 ```
 
 Документация Go‑пакетов доступна на pkg.go.dev: https://pkg.go.dev/github.com/codex-k8s/codexctl.
+
+---
+
+## 🚨 Важно: зависимости от внешних бинарников
+
+Сейчас `codexctl` **зависит от внешних CLI‑утилит** и запускает их как подпроцессы. Это осознанно упрощает старт и
+интеграцию с существующими практиками (kubectl/gh/git/docker), но требует, чтобы эти бинарники были установлены и доступны
+в `PATH` (как на self-hosted runner, так и в контейнере с Codex).
+
+Минимально необходимые утилиты:
+
+- `kubectl` — применение/удаление манифестов, `wait`, диагностика (см. `internal/kube/*`, `hooks: kubectl.wait`);
+- `bash` — выполнение hook‑шагов `run:` (см. `internal/hooks/*`);
+- `docker` — `images mirror/build` (pull/tag/push/build) (см. `internal/cli/images.go`);
+- `git` — commit/push в PR‑флоу (см. `internal/cli/pr.go`);
+- `gh` — чтение/комментирование Issues/PR и GraphQL/REST вызовы (см. `internal/githubapi/*`, `internal/cli/*`).
+
+Опционально:
+
+- `rsync` — ускоряет синхронизацию исходников (если нет, используется более медленный fallback-копир) (см. `internal/cli/manage_env.go`).
+
+Проверка окружения: используйте `codexctl doctor` (он проверяет наличие `kubectl`, `bash`, `git`, `gh`, а также `docker`
+при наличии блока `images` в `services.yaml`, и предупреждает про отсутствие `rsync`).
+
+План на будущее: постепенно заменять часть внешних зависимостей на встроенные реализации (клиенты Kubernetes/GitHub/OCI,
+логика синхронизации и т.п.) через соответствующие SDK/библиотеки, чтобы уменьшить набор обязательных бинарников и сделать
+запуски более предсказуемыми.
+
+Практическую инструкцию по установке необходимых утилит на VPS для runner’а см. в:
+https://github.com/codex-k8s/project-example/blob/main/README_RU.md
 
 ---
 
@@ -669,7 +706,7 @@ codexctl render \
 Через функцию `envOr` эти переменные доступны в шаблонах:
 
 ```yaml
-registry: "{{ envOr \"REGISTRY_HOST\" \"localhost:32000\" }}"
+registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 ```
 
 Часто используемые переменные:
@@ -680,7 +717,7 @@ registry: "{{ envOr \"REGISTRY_HOST\" \"localhost:32000\" }}"
   - `slotCodeRoot` (например, `.../slots/<slot>/src/...`) и
   - `stagingCodeRoot` (например, `.../staging/src/...`),
   которые затем применяются в `services.*.overlays.*.hostMounts` (см. заголовок‑комментарии в `services.yaml`).
-- `DATA_ROOT` — базовый путь до `.data` с данными Postgres/Redis/кеша (используется в `dataPaths.root` и `dataPaths.envDir`).
+- `DATA_ROOT` — базовый путь до `.data` с данными Postgres/Redis/кеша/и т.д. (используется в `dataPaths.root` и `dataPaths.envDir`). Очищается при `manage-env cleanup --with-configmap` (в AI-dev).
 
 В GitHub Actions обычно задаются:
 
@@ -1008,11 +1045,14 @@ jobs:
 
 Workflow:
 
-1) `ci ensure-slot --issue <N>` — выбрать слот под задачу.
-2) `ci ensure-ready --apply --prepare-images` — поднять окружение.
-3) `prompt run --kind dev_issue` — запустить dev‑агента.
-4) auto-commit → push в ветку `codex/issue-<N>`.
-5) найти PR по ветке, прикрепить PR к слоту и запостить комментарий со ссылками (`manage-env comment`).
+1) Проверить, что лейбл `[ai-dev]` и актор входит в `AI_ALLOWED_USERS`.
+2) `ci ensure-slot --env ai --issue <N>` — выбрать/создать слот (учитывая `DEV_SLOTS_MAX`).
+3) `ci ensure-ready --env ai --slot <SLOT> --issue <N> --prepare-images --apply` — поднять AI-dev окружение.
+4) Подготовить рабочую ветку в workspace слота (`codex/issue-<N>`).
+5) `prompt run --kind dev_issue` — запустить dev‑агента (если infra нездорова — добавить `--infra-unhealthy`).
+6) auto-commit → push, найти PR по ветке, прикрепить PR к слоту (`manage-env set`) и
+   запостить комментарий со ссылками (`manage-env comment` + `gh pr comment`).
+7) На сбое — cleanup (`manage-env cleanup --with-configmap`).
 
 ```yaml
 name: "AI Dev Issue 🛠"
@@ -1021,29 +1061,131 @@ on:
   issues:
     types: [labeled]
 
+env:
+  AI_ALLOWED_USERS: ${{ vars.AI_ALLOWED_USERS }}
+  CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+
+concurrency:
+  group: ai-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
-  run:
-    if: github.event.label.name == '[ai-dev]'
+  create-ai:
+    if: >-
+      github.event.label.name == '[ai-dev]' &&
+      contains(format(',{0},', vars.AI_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
+    environment: staging
+    outputs:
+      slot: ${{ steps.alloc.outputs.slot }}
+      namespace: ${{ steps.alloc.outputs.namespace }}
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEX_GH_PAT }}
 
       - id: alloc
+        env:
+          GITHUB_RUN_ID:     ${{ github.run_id }}
+          CODEX_GH_PAT:      ${{ secrets.CODEX_GH_PAT }}
+          CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
         run: |
           set -euo pipefail
-          OUT="$(codexctl ci ensure-slot --env ai --issue "${{ github.event.issue.number }}" --output kv)"
-          SLOT="$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)"
-          echo "slot=$SLOT" >> "$GITHUB_OUTPUT"
+          ISSUE="${{ github.event.issue.number }}"
+          MAX="${{ vars.DEV_SLOTS_MAX }}"
+          ARGS=(ci ensure-slot --env ai --issue "${ISSUE}" --output kv)
+          if [ -n "$MAX" ]; then ARGS+=(--max "$MAX"); fi
+          OUT="$(codexctl "${ARGS[@]}")"
+          echo "$OUT"
+          echo "slot=$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          echo "namespace=$(echo "$OUT" | sed -n 's/^namespace=//p' | head -n1)" >> "$GITHUB_OUTPUT"
 
+  deploy-ai:
+    needs: [create-ai]
+    runs-on: self-hosted
+    environment: staging
+    outputs:
+      infra_ready: ${{ steps.ensure.outputs.infra_ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - id: ensure
+        env:
+          CODE_ROOT_BASE:       ${{ vars.CODE_ROOT_BASE }}
+          DATA_ROOT:            ${{ vars.DATA_ROOT }}
+          # ... а также CODEX_GH_PAT / OPENAI_API_KEY / секреты приложения (см. project-example)
+        run: |
+          set -euo pipefail
+          SLOT="${{ needs.create-ai.outputs.slot }}"
+          ISSUE="${{ github.event.issue.number }}"
+          MAX="${{ vars.DEV_SLOTS_MAX }}"
+          export CODEX_WORKSPACE_UID="$(id -u)"
+          export CODEX_WORKSPACE_GID="$(id -g)"
+          ARGS=(ci ensure-ready --env ai --slot "${SLOT}" --issue "${ISSUE}" --code-root-base "${CODE_ROOT_BASE}" --source "." --prepare-images --apply --force-apply --wait-soft-fail --output kv --vars "CODE_ROOT_BASE=${CODE_ROOT_BASE},DATA_ROOT=${DATA_ROOT}")
+          if [ -n "$MAX" ]; then ARGS+=(--max "$MAX"); fi
+          OUT="$(codexctl "${ARGS[@]}")"
+          echo "$OUT"
+          echo "infra_ready=$(echo "$OUT" | sed -n 's/^infraReady=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+
+  run-codex:
+    needs: [create-ai, deploy-ai]
+    runs-on: self-hosted
+    environment: staging
+    env:
+      CODE_ROOT_BASE: ${{ vars.CODE_ROOT_BASE }}
+      CODEX_GH_PAT:   ${{ secrets.CODEX_GH_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - name: "Ensure working branch 🌿"
+        env:
+          SLOT: ${{ needs.create-ai.outputs.slot }}
+        run: |
+          set -euo pipefail
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          cd "${CODE_ROOT_BASE}/${SLOT}/src"
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@example.com"
+          git checkout -b "codex/issue-${ISSUE_NUMBER}" || git checkout "codex/issue-${ISSUE_NUMBER}"
+
+      - name: "Run Codex dev agent 🤖"
+        env:
+          SLOT:  ${{ needs.create-ai.outputs.slot }}
+          NS:    ${{ needs.create-ai.outputs.namespace }}
+          ISSUE: ${{ github.event.issue.number }}
+          INFRA_READY: ${{ needs.deploy-ai.outputs.infra_ready }}
+        run: |
+          set -euo pipefail
+          ARGS=(prompt run --env ai --slot "${SLOT}" --kind dev_issue --lang ru)
+          if [ -n "$NS" ]; then ARGS+=(--namespace "$NS"); fi
+          if [ -n "$ISSUE" ]; then ARGS+=(--issue "$ISSUE"); fi
+          if [ "$INFRA_READY" = "false" ] || [ "$INFRA_READY" = "0" ]; then ARGS+=(--infra-unhealthy); fi
+          codexctl "${ARGS[@]}"
+
+      - name: "Auto-commit/push + PR link/comment"
+        run: |
+          set -euo pipefail
+          # ... (commit/push; detect PR; manage-env set; manage-env comment; gh pr comment)
+          true
+
+  cleanup-ai:
+    needs: [create-ai, deploy-ai, run-codex]
+    if: always()
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
       - run: |
           set -euo pipefail
-          codexctl ci ensure-ready --env ai --slot "${{ steps.alloc.outputs.slot }}" --issue "${{ github.event.issue.number }}" --code-root-base "${{ vars.CODE_ROOT_BASE }}" --source . --prepare-images --apply
-
-      - run: |
-          set -euo pipefail
-          codexctl prompt run --env ai --slot "${{ steps.alloc.outputs.slot }}" --kind dev_issue --lang ru --issue "${{ github.event.issue.number }}"
+          # ... cleanup on failure only
+          true
 ```
 
 Полный пример см. в репозитории project-example: `.github/workflows/ai_dev_issue.yml`.
@@ -1060,10 +1202,29 @@ on:
   pull_request_review:
     types: [submitted]
 
+env:
+  AI_ALLOWED_USERS: ${{ vars.AI_ALLOWED_USERS }}
+  CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+
+concurrency:
+  group: ai-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   run:
-    if: github.event.review.state == 'changes_requested'
+    if: >-
+      github.event.review.state == 'changes_requested' &&
+      contains(format(',{0},', vars.AI_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
+    environment: staging
+    env:
+      CODE_ROOT_BASE:       ${{ vars.CODE_ROOT_BASE }}
+      CODEX_GH_PAT:         ${{ secrets.CODEX_GH_PAT }}
+      DATA_ROOT:            ${{ vars.DATA_ROOT }}
+      CODEX_GH_USERNAME:    ${{ vars.CODEX_GH_USERNAME }}
+      OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+      CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
+      # ... плюс секреты приложения (POSTGRES_*, REDIS_PASSWORD, SECRET_KEY и т.п.)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1074,13 +1235,49 @@ jobs:
       - id: env
         run: |
           set -euo pipefail
-          OUT="$(codexctl ci ensure-ready --env ai --pr "${{ github.event.pull_request.number }}" --code-root-base "${{ vars.CODE_ROOT_BASE }}" --source . --prepare-images --apply --output kv)"
-          echo "$OUT"
-          SLOT="$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)"
-          echo "slot=$SLOT" >> "$GITHUB_OUTPUT"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
 
-      - run: codexctl prompt run --env ai --slot "${{ steps.env.outputs.slot }}" --kind dev_review --lang ru --pr "${{ github.event.pull_request.number }}" --resume
-      - run: codexctl pr review-apply --env ai --slot "${{ steps.env.outputs.slot }}" --pr "${{ github.event.pull_request.number }}" --code-root-base "${{ vars.CODE_ROOT_BASE }}" --lang ru
+          echo "info: ensuring AI PR review environment ready via codexctl (ensure-ready)" >&2
+          export CODEX_WORKSPACE_UID="$(id -u)"
+          export CODEX_WORKSPACE_GID="$(id -g)"
+          OUT="$(codexctl ci ensure-ready --env ai --pr "${PR_NUMBER}" --code-root-base "${CODE_ROOT_BASE}" --source "." --prepare-images --apply --output kv --vars "CODE_ROOT_BASE=${CODE_ROOT_BASE},DATA_ROOT=${DATA_ROOT}")"
+          echo "$OUT"
+          echo "SLOT=$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          echo "NS=$(echo "$OUT" | sed -n 's/^namespace=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          CREATED="$(echo "$OUT" | sed -n 's/^created=//p' | head -n1)"
+          RECREATED="$(echo "$OUT" | sed -n 's/^recreated=//p' | head -n1)"
+          if [ "$CREATED" = "true" ] || [ "$RECREATED" = "true" ]; then
+            echo "NEW_ENV=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "NEW_ENV=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Run Codex review-fix agent 🤖"
+        run: |
+          set -euo pipefail
+          SLOT="${{ steps.env.outputs.SLOT }}"
+          NS="${{ steps.env.outputs.NS }}"
+          NEW_ENV="${{ steps.env.outputs.NEW_ENV }}"
+          PR="${{ github.event.pull_request.number }}"
+          KIND="dev_review"
+          RESUME_FLAG="--resume"
+          VARS=""
+          if [ "${NEW_ENV}" = "true" ]; then
+            RESUME_FLAG=""
+            VARS="PROMPT_CONTINUATION=1,PROMPT_MODE=full"
+          fi
+          ARGS=(prompt run --env ai --slot "${SLOT}" --kind "${KIND}" --lang ru --pr "${PR}")
+          if [ -n "$NS" ]; then ARGS+=(--namespace "$NS"); fi
+          if [ -n "$VARS" ]; then ARGS+=(--vars "$VARS"); fi
+          if [ -n "$RESUME_FLAG" ]; then ARGS+=("$RESUME_FLAG"); fi
+          codexctl "${ARGS[@]}"
+
+      - name: "Apply review changes and comment 💾"
+        run: |
+          set -euo pipefail
+          SLOT="${{ steps.env.outputs.SLOT }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          codexctl pr review-apply --env ai --slot "${SLOT}" --pr "${PR_NUMBER}" --code-root-base "${CODE_ROOT_BASE}" --lang ru
 ```
 
 Полный пример см. в репозитории project-example: `.github/workflows/ai_pr_review.yml`.
@@ -1244,13 +1441,13 @@ jobs:
 
 ## 🛡️ 9. Безопасность и стабильность
 
-- **Ранняя стадия разработки.** `codexctl` находится на начальном этапе развития, покрытие тестами ограничено, возможны
+- **Ранняя стадия разработки.** `codexctl` находится на начальном этапе развития, покрытие тестами отсутствует, возможны
   нестабильное поведение и ломающие изменения. Используйте инструмент осмотрительно и закладывайте время на отладку.
 - **Только изолированные кластеры.** Предполагается, что `codexctl` и Codex‑агенты работают в **отдельном от продакшена**
   Kubernetes‑кластере, предназначенном для разработки и AI‑экспериментов (dev/staging/ai). **Не используйте** его напрямую
   поверх боевого прод‑кластера.
 - **Ограничение внешнего доступа.** Dev/staging/AI-dev окружения должны быть защищены:
-  - HTTP‑интерфейсы спрятаны за OAuth2‑proxy или другим механизмом аутентификации;
+  - HTTP‑интерфейсы спрятаны за OAuth2‑proxy/IAP или другим механизмом аутентификации;
   - ingress’ы и сервисы не должны быть напрямую доступны из интернета без авторизации;
   - доступ к kube‑API ограничен по пользователям/рольям.
 - **Права Codex‑агента.** Pod `codex` получает расширенные права в namespace слота (создание/обновление деплойментов,
