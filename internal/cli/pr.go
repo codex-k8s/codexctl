@@ -110,6 +110,7 @@ func newPRReviewApplyCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// resolvePRHeadBranch returns the head branch name for a pull request.
 func resolvePRHeadBranch(ctx context.Context, token, repo string, prNumber int) (string, error) {
 	args := []string{
 		"pr", "view", strconv.Itoa(prNumber),
@@ -141,6 +142,7 @@ func resolvePRHeadBranch(ctx context.Context, token, repo string, prNumber int) 
 	return strings.TrimSpace(info.HeadRefName), nil
 }
 
+// commitAndPushPRChanges stages, commits, and pushes changes in a PR workspace.
 func commitAndPushPRChanges(ctx context.Context, logger *slog.Logger, workdir, branch string, prNumber int) error {
 	logger.Info("applying review changes in workspace",
 		"workdir", workdir,
@@ -187,6 +189,7 @@ func commitAndPushPRChanges(ctx context.Context, logger *slog.Logger, workdir, b
 	return nil
 }
 
+// runGit executes a git command in the given directory.
 func runGit(ctx context.Context, dir string, args []string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
@@ -195,6 +198,7 @@ func runGit(ctx context.Context, dir string, args []string) error {
 	return cmd.Run()
 }
 
+// commentPREnvironment posts an environment comment to the PR via gh.
 func commentPREnvironment(ctx context.Context, logger *slog.Logger, opts *Options, token, repo string, prNumber, slot int, lang string) error {
 	envName := opts.Env
 	if envName == "" {

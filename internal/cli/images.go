@@ -176,6 +176,7 @@ func buildImages(ctx context.Context, logger *slog.Logger, cfg *config.StackConf
 	return nil
 }
 
+// buildSingleImage builds and pushes one image definition.
 func buildSingleImage(ctx context.Context, logger *slog.Logger, name string, img config.ImageSpec, tmplCtx config.TemplateContext) error {
 	repo := strings.TrimSpace(img.Repository)
 	if repo == "" {

@@ -8,6 +8,7 @@ import (
 
 const defaultDeployWaitTimeout = "600s"
 
+// resolveDeployWaitTimeout chooses the effective deploy wait timeout.
 func resolveDeployWaitTimeout(stackCfg *config.StackConfig, explicit string, explicitSet bool) string {
 	if explicitSet {
 		if v := strings.TrimSpace(explicit); v != "" {

@@ -165,6 +165,7 @@ func syncSources(source, target string) error {
 	return copyDir(src, tgt)
 }
 
+// copyDir performs a naive recursive file copy when rsync is unavailable.
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -262,11 +263,16 @@ func newManageEnvCommentCommand(opts *Options) *cobra.Command {
 
 // envSlotStore bundles stack configuration, template context, environment config and state store for slot operations.
 type envSlotStore struct {
-	stackCfg    *config.StackConfig
+	// stackCfg is the loaded stack configuration.
+	stackCfg *config.StackConfig
+	// templateCtx is the template context used for rendering.
 	templateCtx config.TemplateContext
-	envCfg      config.Environment
-	kubeClient  *kube.Client
-	store       *state.Store
+	// envCfg is the resolved environment configuration.
+	envCfg config.Environment
+	// kubeClient is the Kubernetes client for slot operations.
+	kubeClient *kube.Client
+	// store manages slot state persistence.
+	store *state.Store
 }
 
 // loadEnvSlotStore loads stack configuration, resolves the target environment, constructs a Kubernetes client

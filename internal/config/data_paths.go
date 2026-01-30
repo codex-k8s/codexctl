@@ -9,17 +9,24 @@ import (
 
 // DataPaths describes how to locate data directories for services (e.g. postgres/redis).
 type DataPaths struct {
-	Root   string   `yaml:"root,omitempty"`
-	EnvDir string   `yaml:"envDir,omitempty"`
-	Dirs   []string `yaml:"dirs,omitempty"`
-	Paths  []string `yaml:"paths,omitempty"`
+	// Root is the base directory for data paths.
+	Root string `yaml:"root,omitempty"`
+	// EnvDir is the per-environment directory name or path.
+	EnvDir string `yaml:"envDir,omitempty"`
+	// Dirs enumerates subdirectories to create under Root/EnvDir when Paths is empty.
+	Dirs []string `yaml:"dirs,omitempty"`
+	// Paths defines explicit data directories to manage.
+	Paths []string `yaml:"paths,omitempty"`
 }
 
 // ResolvedDataPaths provides a normalized view of data paths for the current env/slot.
 type ResolvedDataPaths struct {
-	Root   string
+	// Root is the resolved base directory.
+	Root string
+	// EnvDir is the resolved environment directory.
 	EnvDir string
-	Paths  []string
+	// Paths is the normalized list of data paths to manage.
+	Paths []string
 }
 
 // ResolveDataPaths resolves and normalizes data paths defined in services.yaml.

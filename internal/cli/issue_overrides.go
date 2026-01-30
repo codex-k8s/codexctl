@@ -9,6 +9,7 @@ import (
 	"github.com/codex-k8s/codexctl/internal/config"
 )
 
+// applyIssueReasoningEffortOverride updates model reasoning effort based on issue labels.
 func applyIssueReasoningEffortOverride(
 	ctx context.Context,
 	logger *slog.Logger,
@@ -51,6 +52,7 @@ func applyIssueReasoningEffortOverride(
 	logger.Info("overriding codex model reasoning effort from issue labels", "issue", issue, "effort", effort)
 }
 
+// resolveReasoningEffort maps label names to reasoning effort values.
 func resolveReasoningEffort(labels []ghIssueLabel) (string, bool) {
 	if len(labels) == 0 {
 		return "", false

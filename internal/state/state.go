@@ -25,17 +25,25 @@ type Store struct {
 
 // EnvRecord represents a single allocated environment slot.
 type EnvRecord struct {
-	Slot       int
-	Env        string
-	Namespace  string
-	Issue      int
-	PR         int
-	CreatedAt  time.Time
+	// Slot is the allocated slot number.
+	Slot int
+	// Env is the environment name (e.g. ai, dev).
+	Env string
+	// Namespace is the Kubernetes namespace for the slot.
+	Namespace string
+	// Issue is the associated GitHub issue number, if any.
+	Issue int
+	// PR is the associated GitHub pull request number, if any.
+	PR int
+	// CreatedAt is the timestamp when the slot was allocated.
+	CreatedAt time.Time
+	// ConfigName is the backing ConfigMap name used for state.
 	ConfigName string
 }
 
 // NoFreeSlotError indicates that there are no free slots available.
 type NoFreeSlotError struct {
+	// Max is the maximum slot number that was searched.
 	Max int
 }
 
@@ -344,6 +352,7 @@ func (s *Store) GarbageCollect(ctx context.Context, envName string, ttl time.Dur
 	return removed, nil
 }
 
+// ensureNamespace verifies the state namespace exists, creating it when missing.
 func (s *Store) ensureNamespace(ctx context.Context) error {
 	if s == nil || s.client == nil {
 		return fmt.Errorf("state store is not initialized")
@@ -364,6 +373,7 @@ func (s *Store) ensureNamespace(ctx context.Context) error {
 	return nil
 }
 
+// buildSlotOrder builds the allocation search order given limits and preference.
 func buildSlotOrder(max int, prefer int) []int {
 	const maxSlotsCap = 10000
 
@@ -410,6 +420,7 @@ type cmItem struct {
 	Data map[string]string `json:"data"`
 }
 
+// listConfigMaps returns the raw ConfigMap list used for state storage.
 func (s *Store) listConfigMaps(ctx context.Context) (*cmList, error) {
 	args := []string{"-n", s.namespace, "get", "configmap", "-o", "json"}
 	out, err := s.client.RunAndCapture(ctx, nil, args...)

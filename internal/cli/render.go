@@ -9,6 +9,7 @@ import (
 	"github.com/codex-k8s/codexctl/internal/engine"
 )
 
+// newRenderCommand creates the "render" subcommand that prints rendered manifests.
 func newRenderCommand(opts *Options) *cobra.Command {
 	var (
 		slot         int

@@ -1,19 +1,31 @@
+// Package githubapi provides minimal GitHub API models for GraphQL responses.
 package githubapi
 
 type IssueComment struct {
-	ID        int
-	Author    string
-	URL       string
-	Body      string
+	// ID is the GitHub comment database ID.
+	ID int
+	// Author is the GitHub login of the comment author.
+	Author string
+	// URL is the canonical URL of the comment.
+	URL string
+	// Body is the raw markdown body of the comment.
+	Body string
+	// CreatedAt is the ISO timestamp of comment creation.
 	CreatedAt string
 }
 
 type ReviewComment struct {
-	ID        int
-	Author    string
-	URL       string
-	Body      string
-	ThreadID  string
+	// ID is the GitHub comment database ID.
+	ID int
+	// Author is the GitHub login of the comment author.
+	Author string
+	// URL is the canonical URL of the comment.
+	URL string
+	// Body is the raw markdown body of the comment.
+	Body string
+	// ThreadID identifies the review thread in GraphQL.
+	ThreadID string
+	// CreatedAt is the ISO timestamp of comment creation.
 	CreatedAt string
 }
 

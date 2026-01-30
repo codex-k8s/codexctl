@@ -19,6 +19,7 @@ const (
 	dataPathDelete
 )
 
+// handleDataPaths performs create/clean/delete actions for resolved data paths.
 func handleDataPaths(logger *slog.Logger, stackCfg *config.StackConfig, action dataPathAction) error {
 	if stackCfg == nil {
 		return nil
@@ -61,6 +62,7 @@ func handleDataPaths(logger *slog.Logger, stackCfg *config.StackConfig, action d
 	return nil
 }
 
+// dataPathsTargets returns the list of paths to manage, deduplicated.
 func dataPathsTargets(resolved config.ResolvedDataPaths) []string {
 	var paths []string
 	if resolved.EnvDir != "" {
@@ -70,6 +72,7 @@ func dataPathsTargets(resolved config.ResolvedDataPaths) []string {
 	return stringsutil.DedupeStrings(paths)
 }
 
+// cleanDataDir removes all entries within a directory without removing the dir itself.
 func cleanDataDir(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -86,11 +89,13 @@ func cleanDataDir(dir string) error {
 	return nil
 }
 
+// safeDataPath enforces that path is within the configured root.
 func safeDataPath(root, path string) bool {
 	path = filepath.Clean(strings.TrimSpace(path))
 	if path == "" || path == "." || path == string(os.PathSeparator) {
 		return false
 	}
+	// Without a root, only absolute paths are considered safe.
 	if root == "" {
 		return filepath.IsAbs(path)
 	}
@@ -98,6 +103,7 @@ func safeDataPath(root, path string) bool {
 	if root == "" || root == "." || root == string(os.PathSeparator) {
 		return false
 	}
+	// Avoid deleting the root itself.
 	if path == root {
 		return false
 	}

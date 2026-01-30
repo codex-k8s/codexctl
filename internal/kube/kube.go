@@ -14,8 +14,10 @@ import (
 
 // Client wraps kubectl execution with optional kubeconfig and context selection.
 type Client struct {
+	// Kubeconfig is the path to the kubeconfig file to use.
 	Kubeconfig string
-	Context    string
+	// Context selects the kubeconfig context name.
+	Context string
 	// StdoutToStderr redirects kubectl stdout to stderr (useful for machine-readable outputs).
 	StdoutToStderr bool
 }
@@ -105,6 +107,7 @@ func (c *Client) RunAndCapture(ctx context.Context, stdin []byte, args ...string
 	return out, nil
 }
 
+// runKubectl executes kubectl with configured context/kubeconfig and streams output.
 func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) error {
 	cmdArgs := make([]string, 0, len(args)+4)
 	if c.Context != "" {

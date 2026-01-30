@@ -9,6 +9,7 @@ import (
 	"github.com/codex-k8s/codexctl/internal/env"
 )
 
+// parseInlineVarsAndFiles reads inline vars and optional var-file flags.
 func parseInlineVarsAndFiles(cmd *cobra.Command) (env.Vars, []string, error) {
 	inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
 	if err != nil {
@@ -23,6 +24,7 @@ func parseInlineVarsAndFiles(cmd *cobra.Command) (env.Vars, []string, error) {
 	return inlineVars, varFiles, nil
 }
 
+// loadStackConfigFromCmd loads stack config using CLI flags and slot value.
 func loadStackConfigFromCmd(opts *Options, cmd *cobra.Command, slot int) (*config.StackConfig, config.TemplateContext, env.Vars, []string, error) {
 	inlineVars, varFiles, err := parseInlineVarsAndFiles(cmd)
 	if err != nil {
@@ -45,11 +47,13 @@ func loadStackConfigFromCmd(opts *Options, cmd *cobra.Command, slot int) (*confi
 	return stackCfg, ctxData, inlineVars, varFiles, nil
 }
 
+// addVarsFlags registers flags for inline vars and var-file inputs.
 func addVarsFlags(cmd *cobra.Command) {
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 }
 
+// addRenderFilterFlags registers infra/service include/exclude flags.
 func addRenderFilterFlags(cmd *cobra.Command, onlyServices, skipServices, onlyInfra, skipInfra *string, actionOnly, actionSkip string) {
 	cmd.Flags().StringVar(onlyServices, "only-services", "", fmt.Sprintf("%s only selected services (comma-separated names)", actionOnly))
 	cmd.Flags().StringVar(skipServices, "skip-services", "", fmt.Sprintf("%s selected services (comma-separated names)", actionSkip))

@@ -1,5 +1,6 @@
 package engine
 
+// normalizeMapSlice coerces an interface value into a slice of map documents.
 func normalizeMapSlice(value any) []map[string]any {
 	if value == nil {
 		return nil

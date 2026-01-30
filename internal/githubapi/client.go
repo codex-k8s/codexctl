@@ -13,6 +13,7 @@ import (
 	"strings"
 )
 
+// Client wraps GitHub CLI GraphQL calls for a specific repository.
 type Client struct {
 	logger *slog.Logger
 	token  string
@@ -21,6 +22,7 @@ type Client struct {
 	name   string
 }
 
+// NewClient validates inputs and builds a GitHub API client scoped to a repo.
 func NewClient(logger *slog.Logger, token, repo string) (*Client, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
@@ -39,6 +41,7 @@ func NewClient(logger *slog.Logger, token, repo string) (*Client, error) {
 	}, nil
 }
 
+// FetchIssueComments returns non-minimized comments for the given issue number.
 func (c *Client) FetchIssueComments(ctx context.Context, number int) ([]IssueComment, error) {
 	if number <= 0 {
 		return nil, fmt.Errorf("issue number must be positive")
@@ -89,6 +92,7 @@ func (c *Client) FetchIssueComments(ctx context.Context, number int) ([]IssueCom
 				CreatedAt: strings.TrimSpace(node.CreatedAt),
 			})
 		}
+		// Stop when the GraphQL page indicates no further results.
 		if !resp.Data.Repository.Issue.Comments.PageInfo.HasNextPage {
 			break
 		}
@@ -100,6 +104,7 @@ func (c *Client) FetchIssueComments(ctx context.Context, number int) ([]IssueCom
 	return out, nil
 }
 
+// FetchReviewComments returns non-resolved, non-minimized review comments for a PR.
 func (c *Client) FetchReviewComments(ctx context.Context, number int) ([]ReviewComment, error) {
 	if number <= 0 {
 		return nil, fmt.Errorf("pr number must be positive")
@@ -163,6 +168,7 @@ func (c *Client) FetchReviewComments(ctx context.Context, number int) ([]ReviewC
 				})
 			}
 		}
+		// Stop when the GraphQL page indicates no further results.
 		if !resp.Data.Repository.PullRequest.ReviewThreads.PageInfo.HasNextPage {
 			break
 		}
@@ -174,6 +180,7 @@ func (c *Client) FetchReviewComments(ctx context.Context, number int) ([]ReviewC
 	return out, nil
 }
 
+// runGraphQL executes a gh api graphql call and decodes the JSON response into out.
 func (c *Client) runGraphQL(ctx context.Context, query string, vars map[string]any, out any) error {
 	args := []string{"api", "graphql", "-f", "query=" + query}
 	for key, val := range vars {

@@ -7,6 +7,7 @@ import (
 	"github.com/codex-k8s/codexctl/internal/config"
 )
 
+// applyKubeconfigOverride applies env-based overrides to the environment config.
 func applyKubeconfigOverride(envCfg *config.Environment) {
 	if envCfg == nil {
 		return

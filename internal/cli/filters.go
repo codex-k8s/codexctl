@@ -2,6 +2,7 @@ package cli
 
 import "strings"
 
+// parseNameSet splits a comma-separated list into a normalized set.
 func parseNameSet(raw string) map[string]struct{} {
 	if strings.TrimSpace(raw) == "" {
 		return nil

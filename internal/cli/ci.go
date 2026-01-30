@@ -32,6 +32,7 @@ func newCICommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// newCIImagesCommand creates "ci images" to mirror/build images in CI.
 func newCIImagesCommand(opts *Options) *cobra.Command {
 	var mirror bool
 	var build bool
@@ -70,6 +71,7 @@ func newCIImagesCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// newCIApplyCommand creates "ci apply" with retries and optional wait.
 func newCIApplyCommand(opts *Options) *cobra.Command {
 	var (
 		slot           int
@@ -188,6 +190,7 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// newCIEnsureSlotCommand creates "ci ensure-slot" for slot allocation in CI.
 func newCIEnsureSlotCommand(opts *Options) *cobra.Command {
 	var issue, pr, slot, max int
 	var output string
@@ -232,6 +235,7 @@ func newCIEnsureSlotCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// newCIEnsureReadyCommand creates "ci ensure-ready" for provisioning envs in CI.
 func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 	var (
 		issue         int
@@ -342,6 +346,7 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// waitForDeployments runs kubectl wait with a request timeout wrapper.
 func waitForDeployments(ctx context.Context, client *kube.Client, namespace string, requestTimeout time.Duration, waitTimeout string) error {
 	if client == nil {
 		return fmt.Errorf("kubernetes client is nil")

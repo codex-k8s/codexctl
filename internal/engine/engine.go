@@ -26,9 +26,13 @@ func NewEngine() *Engine {
 
 // RenderOptions allows filtering infra/services when rendering a stack.
 type RenderOptions struct {
-	OnlyInfra    map[string]struct{}
-	SkipInfra    map[string]struct{}
+	// OnlyInfra limits rendering to infra names in this set.
+	OnlyInfra map[string]struct{}
+	// SkipInfra excludes infra names in this set.
+	SkipInfra map[string]struct{}
+	// OnlyServices limits rendering to service names in this set.
 	OnlyServices map[string]struct{}
+	// SkipServices excludes service names in this set.
 	SkipServices map[string]struct{}
 }
 
@@ -111,6 +115,7 @@ func (e *Engine) RenderStackWithOptions(cfg *config.StackConfig, ctx config.Temp
 	return buf.Bytes(), nil
 }
 
+// resourceIncluded reports whether name passes include/exclude filters.
 func resourceIncluded(name string, only, skip map[string]struct{}) bool {
 	key := strings.ToLower(strings.TrimSpace(name))
 	if len(only) > 0 {
@@ -124,6 +129,7 @@ func resourceIncluded(name string, only, skip map[string]struct{}) bool {
 	return true
 }
 
+// evaluateWhen renders a when-expression and interprets common false values.
 func evaluateWhen(kind, expr string, ctx config.TemplateContext) (bool, error) {
 	if strings.TrimSpace(expr) == "" {
 		return true, nil
@@ -143,14 +149,17 @@ func evaluateWhen(kind, expr string, ctx config.TemplateContext) (bool, error) {
 	return true, nil
 }
 
+// evaluateServiceWhen evaluates a service "when" expression.
 func evaluateServiceWhen(expr string, ctx config.TemplateContext) (bool, error) {
 	return evaluateWhen("service", expr, ctx)
 }
 
+// evaluateInfraWhen evaluates an infrastructure "when" expression.
 func evaluateInfraWhen(expr string, ctx config.TemplateContext) (bool, error) {
 	return evaluateWhen("infra", expr, ctx)
 }
 
+// loadManifestDocuments reads, templates, and decodes a manifest file into YAML documents.
 func (e *Engine) loadManifestDocuments(path string, ctx config.TemplateContext) ([]map[string]any, error) {
 	if path == "" {
 		return nil, fmt.Errorf("manifest path is empty")
@@ -188,6 +197,7 @@ func (e *Engine) loadManifestDocuments(path string, ctx config.TemplateContext) 
 	return docs, nil
 }
 
+// shouldDropKind reports whether the document kind matches the drop list.
 func shouldDropKind(doc map[string]any, dropKinds []string) bool {
 	if len(dropKinds) == 0 {
 		return false
@@ -204,6 +214,7 @@ func shouldDropKind(doc map[string]any, dropKinds []string) bool {
 	return false
 }
 
+// applyNamespace injects namespace into namespaced resources when missing.
 func applyNamespace(doc map[string]any, ns string) {
 	if ns == "" {
 		return
@@ -258,6 +269,7 @@ func applyServiceImage(doc map[string]any, svc config.Service, ctx config.Templa
 	template := getOrCreateMap(spec, "template")
 	podSpec := getOrCreateMap(template, "spec")
 
+	// Update the main container image (first container in the list).
 	containers := getSliceOfMaps(podSpec, "containers")
 	if len(containers) == 0 {
 		return nil
@@ -268,6 +280,7 @@ func applyServiceImage(doc map[string]any, svc config.Service, ctx config.Templa
 	containers[0] = main
 	podSpec["containers"] = containers
 
+	// Keep init containers aligned with the main image when they share it.
 	initContainers := getSliceOfMaps(podSpec, "initContainers")
 	for i, ic := range initContainers {
 		icImg, _ := ic["image"].(string)

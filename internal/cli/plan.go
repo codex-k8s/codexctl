@@ -97,18 +97,26 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 }
 
 type ghIssueLabel struct {
+	// Name is the GitHub label name.
 	Name string `json:"name"`
 }
 
 type ghIssue struct {
-	Number int            `json:"number"`
-	Title  string         `json:"title"`
-	State  string         `json:"state"`
-	Body   string         `json:"body"`
-	URL    string         `json:"url"`
+	// Number is the issue number.
+	Number int `json:"number"`
+	// Title is the issue title.
+	Title string `json:"title"`
+	// State is the issue state (open/closed).
+	State string `json:"state"`
+	// Body is the raw markdown body.
+	Body string `json:"body"`
+	// URL is the canonical issue URL.
+	URL string `json:"url"`
+	// Labels lists attached issue labels.
 	Labels []ghIssueLabel `json:"labels"`
 }
 
+// lookupGitHubToken finds a token from known environment variables.
 func lookupGitHubToken() (string, error) {
 	candidates := []string{
 		os.Getenv("CODEX_GH_PAT"),
@@ -123,6 +131,7 @@ func lookupGitHubToken() (string, error) {
 	return "", fmt.Errorf("GitHub token is required; set CODEX_GH_PAT or GH_TOKEN or GITHUB_TOKEN")
 }
 
+// fetchIssueJSON returns issue data using the gh CLI.
 func fetchIssueJSON(ctx context.Context, logger *slog.Logger, token, repo string, number int) (*ghIssue, error) {
 	args := []string{
 		"issue", "view", strconv.Itoa(number),
@@ -153,11 +162,13 @@ func fetchIssueJSON(ctx context.Context, logger *slog.Logger, token, repo string
 	return &issue, nil
 }
 
+// resolveRootIssueNumber finds the root planning issue via label or body marker.
 func resolveRootIssueNumber(issue *ghIssue) int {
 	if issue == nil {
 		return 0
 	}
 
+	// Prefer explicit [ai-plan] label.
 	for _, l := range issue.Labels {
 		if strings.TrimSpace(l.Name) == "[ai-plan]" {
 			return issue.Number
@@ -169,6 +180,7 @@ func resolveRootIssueNumber(issue *ghIssue) int {
 		return 0
 	}
 
+	// Fallback to body marker AI-PLAN-PARENT: #<num>.
 	re := regexp.MustCompile(`AI-PLAN-PARENT:\s*#(\d+)`)
 	matches := re.FindStringSubmatch(body)
 	if len(matches) != 2 {

@@ -11,10 +11,13 @@ import (
 )
 
 type doctorParams struct {
+	// stackCfg provides stack context for tool checks.
 	stackCfg *config.StackConfig
-	envName  string
+	// envName is the environment name for log context.
+	envName string
 }
 
+// runDoctorChecks verifies required/optional tooling is available in PATH.
 func runDoctorChecks(_ context.Context, logger *slog.Logger, params doctorParams) error {
 	if logger == nil {
 		logger = slog.Default()

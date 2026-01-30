@@ -14,48 +14,80 @@ import (
 )
 
 type ensureSlotRequest struct {
-	envName       string
-	issue         int
-	pr            int
-	slot          int
-	maxSlots      int
+	// envName is the target environment name.
+	envName string
+	// issue is the GitHub issue selector.
+	issue int
+	// pr is the GitHub PR selector.
+	pr int
+	// slot is an explicit slot override.
+	slot int
+	// maxSlots limits the allocation search.
+	maxSlots int
+	// machineOutput toggles machine-readable logging behavior.
 	machineOutput bool
-	inlineVars    env.Vars
-	varFiles      []string
+	// inlineVars are inline variables for template rendering.
+	inlineVars env.Vars
+	// varFiles are additional var-file paths.
+	varFiles []string
 }
 
 type ensureSlotResult struct {
-	record  state.EnvRecord
+	// record is the resolved environment record.
+	record state.EnvRecord
+	// created indicates a new slot allocation.
 	created bool
-	store   *envSlotStore
+	// store holds the resolved store context.
+	store *envSlotStore
 }
 
 type ensureReadyRequest struct {
-	envName        string
-	issue          int
-	pr             int
-	slot           int
-	maxSlots       int
-	codeRootBase   string
-	source         string
-	prepareImages  bool
-	doApply        bool
-	forceApply     bool
-	waitTimeout    string
+	// envName is the target environment name.
+	envName string
+	// issue is the GitHub issue selector.
+	issue int
+	// pr is the GitHub PR selector.
+	pr int
+	// slot is an explicit slot override.
+	slot int
+	// maxSlots limits the allocation search.
+	maxSlots int
+	// codeRootBase is the base path for slot workspaces.
+	codeRootBase string
+	// source is the path to sync into the slot workspace.
+	source string
+	// prepareImages toggles mirroring/building images.
+	prepareImages bool
+	// doApply toggles applying manifests after allocation.
+	doApply bool
+	// forceApply forces apply even for existing envs.
+	forceApply bool
+	// waitTimeout overrides deployment wait timeout.
+	waitTimeout string
+	// waitTimeoutSet indicates explicit wait-timeout flag usage.
 	waitTimeoutSet bool
-	waitSoftFail   bool
-	machineOutput  bool
-	inlineVars     env.Vars
-	varFiles       []string
+	// waitSoftFail allows wait failures to be non-fatal.
+	waitSoftFail bool
+	// machineOutput toggles machine-readable logging behavior.
+	machineOutput bool
+	// inlineVars are inline variables for template rendering.
+	inlineVars env.Vars
+	// varFiles are additional var-file paths.
+	varFiles []string
 }
 
 type ensureReadyResult struct {
-	record     state.EnvRecord
-	created    bool
-	recreated  bool
+	// record is the resolved environment record.
+	record state.EnvRecord
+	// created indicates a new slot allocation.
+	created bool
+	// recreated indicates resources were recreated due to missing namespace.
+	recreated bool
+	// infraReady indicates whether infra rollout was successful.
 	infraReady bool
 }
 
+// ensureSlot allocates or resolves an environment slot based on selectors.
 func ensureSlot(ctx context.Context, logger *slog.Logger, opts *Options, req ensureSlotRequest) (ensureSlotResult, error) {
 	var res ensureSlotResult
 	if req.issue <= 0 && req.pr <= 0 && req.slot <= 0 {
@@ -126,6 +158,7 @@ func ensureSlot(ctx context.Context, logger *slog.Logger, opts *Options, req ens
 	return res, nil
 }
 
+// ensureReady ensures a slot exists and optionally prepares/apply resources.
 func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req ensureReadyRequest) (ensureReadyResult, error) {
 	var res ensureReadyResult
 	res.infraReady = true

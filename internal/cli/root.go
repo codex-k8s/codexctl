@@ -18,10 +18,14 @@ const (
 
 // Options stores global CLI options shared between commands.
 type Options struct {
+	// ConfigPath is the path to services.yaml.
 	ConfigPath string
-	Env        string
-	Namespace  string
-	LogLevel   logging.Level
+	// Env is the environment name (e.g. dev, staging, ai).
+	Env string
+	// Namespace overrides the derived namespace.
+	Namespace string
+	// LogLevel controls structured logging verbosity.
+	LogLevel logging.Level
 }
 
 // Execute builds the root command, runs it with the provided args and logger, and returns any error.

@@ -19,21 +19,36 @@ import (
 // StackConfig represents the high-level description of a deployable stack.
 // It mirrors the structure of services.yaml after template rendering.
 type StackConfig struct {
-	Project        string                 `yaml:"project"`
-	EnvFiles       []string               `yaml:"envFiles,omitempty"`
-	Codex          CodexConfig            `yaml:"codex,omitempty"`
-	Namespace      *NamespaceBlock        `yaml:"namespace,omitempty"`
-	MaxSlots       int                    `yaml:"maxSlots,omitempty"`
-	Registry       string                 `yaml:"registry,omitempty"`
-	Images         map[string]ImageSpec   `yaml:"images,omitempty"`
-	BaseDomain     map[string]string      `yaml:"baseDomain,omitempty"`
-	Environments   map[string]Environment `yaml:"environments,omitempty"`
-	Infrastructure []InfraItem            `yaml:"infrastructure,omitempty"`
-	Services       []Service              `yaml:"services,omitempty"`
-	Hooks          HookSet                `yaml:"hooks,omitempty"`
-	DataPaths      *DataPaths             `yaml:"dataPaths,omitempty"`
-	State          StateConfig            `yaml:"state,omitempty"`
-	Versions       map[string]string      `yaml:"versions,omitempty"`
+	// Project is the short project name used in namespaces and defaults.
+	Project string `yaml:"project"`
+	// EnvFiles lists .env files to load before rendering.
+	EnvFiles []string `yaml:"envFiles,omitempty"`
+	// Codex contains Codex-specific integration settings.
+	Codex CodexConfig `yaml:"codex,omitempty"`
+	// Namespace defines namespace naming patterns by environment.
+	Namespace *NamespaceBlock `yaml:"namespace,omitempty"`
+	// MaxSlots sets the default maximum number of environment slots.
+	MaxSlots int `yaml:"maxSlots,omitempty"`
+	// Registry is the default container registry for images.
+	Registry string `yaml:"registry,omitempty"`
+	// Images contains image definitions keyed by name.
+	Images map[string]ImageSpec `yaml:"images,omitempty"`
+	// BaseDomain maps environment name to base domain.
+	BaseDomain map[string]string `yaml:"baseDomain,omitempty"`
+	// Environments contains Kubernetes settings per environment.
+	Environments map[string]Environment `yaml:"environments,omitempty"`
+	// Infrastructure lists infra manifests applied before services.
+	Infrastructure []InfraItem `yaml:"infrastructure,omitempty"`
+	// Services lists service manifests and overlays.
+	Services []Service `yaml:"services,omitempty"`
+	// Hooks defines global hook steps around stack operations.
+	Hooks HookSet `yaml:"hooks,omitempty"`
+	// DataPaths defines data directory management settings.
+	DataPaths *DataPaths `yaml:"dataPaths,omitempty"`
+	// State describes how slot state is stored.
+	State StateConfig `yaml:"state,omitempty"`
+	// Versions provides named version strings available in templates.
+	Versions map[string]string `yaml:"versions,omitempty"`
 }
 
 // CodexConfig describes Codex-specific configuration for a project.
@@ -83,29 +98,40 @@ type CodexTimeouts struct {
 
 // Link describes a named link to expose in comments/UI (title + path).
 type Link struct {
+	// Title is the human-readable link label.
 	Title string `yaml:"title,omitempty"`
-	Path  string `yaml:"path,omitempty"`
+	// Path is the path portion to append to the base host.
+	Path string `yaml:"path,omitempty"`
 }
 
 // NamespaceBlock describes namespace patterns per environment.
 type NamespaceBlock struct {
+	// Patterns maps environment name to a namespace template.
 	Patterns map[string]string `yaml:"patterns,omitempty"`
 }
 
 // Environment describes environment-level Kubernetes connection and behavior.
 type Environment struct {
-	Kubeconfig      string             `yaml:"kubeconfig,omitempty"`
-	Context         string             `yaml:"context,omitempty"`
-	From            string             `yaml:"from,omitempty"`
-	ImagePullPolicy string             `yaml:"imagePullPolicy,omitempty"`
-	LocalRegistry   *LocalRegistrySpec `yaml:"localRegistry,omitempty"`
+	// Kubeconfig is the path to the kubeconfig file to use.
+	Kubeconfig string `yaml:"kubeconfig,omitempty"`
+	// Context selects the kubeconfig context name.
+	Context string `yaml:"context,omitempty"`
+	// From references another environment to inherit from.
+	From string `yaml:"from,omitempty"`
+	// ImagePullPolicy overrides the default pull policy for workloads.
+	ImagePullPolicy string `yaml:"imagePullPolicy,omitempty"`
+	// LocalRegistry configures an optional local registry for dev.
+	LocalRegistry *LocalRegistrySpec `yaml:"localRegistry,omitempty"`
 }
 
 // LocalRegistrySpec describes a local image registry used in development setups.
 type LocalRegistrySpec struct {
-	Enabled bool   `yaml:"enabled"`
-	Name    string `yaml:"name,omitempty"`
-	Port    int    `yaml:"port,omitempty"`
+	// Enabled toggles the local registry integration.
+	Enabled bool `yaml:"enabled"`
+	// Name is the registry name/host.
+	Name string `yaml:"name,omitempty"`
+	// Port is the registry port when running locally.
+	Port int `yaml:"port,omitempty"`
 }
 
 // ImageSpec describes an image declared in the top-level images block.
@@ -139,51 +165,72 @@ type ImageSpec struct {
 
 // InfraItem groups infrastructure manifests applied before services.
 type InfraItem struct {
-	Name      string        `yaml:"name"`
+	// Name is the logical infra block name.
+	Name string `yaml:"name"`
+	// Manifests lists YAML manifests to apply for this infra block.
 	Manifests []ManifestRef `yaml:"manifests"`
-	When      string        `yaml:"when,omitempty"`
-	Hooks     ResourceHooks `yaml:"hooks,omitempty"`
+	// When is a template expression that enables this infra block.
+	When string `yaml:"when,omitempty"`
+	// Hooks contains infra-specific hook steps.
+	Hooks ResourceHooks `yaml:"hooks,omitempty"`
 }
 
 // ManifestRef points to a YAML manifest file relative to the project root.
 type ManifestRef struct {
+	// Path is the manifest file path relative to the project root.
 	Path string `yaml:"path"`
 }
 
 // Service describes a single logical service in the stack.
 type Service struct {
-	Name      string             `yaml:"name"`
-	Manifests []ManifestRef      `yaml:"manifests"`
-	Image     ServiceImage       `yaml:"image,omitempty"`
-	Ingress   *ServiceIngress    `yaml:"ingress,omitempty"`
-	When      string             `yaml:"when,omitempty"`
-	Overlays  map[string]Overlay `yaml:"overlays,omitempty"`
-	Hooks     ResourceHooks      `yaml:"hooks,omitempty"`
+	// Name is the service identifier used in manifests and overlays.
+	Name string `yaml:"name"`
+	// Manifests lists YAML manifests for this service.
+	Manifests []ManifestRef `yaml:"manifests"`
+	// Image describes how to compute the container image reference.
+	Image ServiceImage `yaml:"image,omitempty"`
+	// Ingress defines host mapping for the service.
+	Ingress *ServiceIngress `yaml:"ingress,omitempty"`
+	// When is a template expression that enables this service.
+	When string `yaml:"when,omitempty"`
+	// Overlays contains per-environment overrides.
+	Overlays map[string]Overlay `yaml:"overlays,omitempty"`
+	// Hooks contains service-specific hook steps.
+	Hooks ResourceHooks `yaml:"hooks,omitempty"`
 }
 
 // ServiceImage describes how to construct the container image for a service.
 // Tag is treated as a template string (tagTemplate) that can contain Go-template expressions.
 type ServiceImage struct {
+	// Repository is the image repository (e.g. "org/service").
 	Repository string `yaml:"repository"`
-	Tag        string `yaml:"tagTemplate"`
+	// Tag is a Go-template string that resolves to an image tag.
+	Tag string `yaml:"tagTemplate"`
 }
 
 // ServiceIngress describes host mapping per environment for a service.
 type ServiceIngress struct {
+	// Hosts maps environment name to host.
 	Hosts map[string]string `yaml:"hosts,omitempty"`
 }
 
 // Overlay describes per-environment overrides for a service.
 type Overlay struct {
+	// HostMounts inject hostPath mounts into workloads.
 	HostMounts []HostMount `yaml:"hostMounts,omitempty"`
-	DropKinds  []string    `yaml:"dropKinds,omitempty"`
+	// DropKinds lists Kubernetes kinds to exclude for the environment.
+	DropKinds []string `yaml:"dropKinds,omitempty"`
 }
 
 // HostMount describes a hostPath mount injected into workloads.
 type HostMount struct {
-	Name         string `yaml:"name"`
-	HostPath     string `yaml:"hostPath"`
-	MountPath    string `yaml:"mountPath"`
+	// Name is the volume name to create.
+	Name string `yaml:"name"`
+	// HostPath is the absolute path on the host.
+	HostPath string `yaml:"hostPath"`
+	// MountPath is the container path to mount into.
+	MountPath string `yaml:"mountPath"`
+	// HostPathType is the Kubernetes hostPath type (e.g. Directory).
 	HostPathType string `yaml:"hostPathType,omitempty"`
 }
 
@@ -197,54 +244,85 @@ type StateConfig struct {
 
 // HookSet describes global hooks executed around stack operations.
 type HookSet struct {
+	// BeforeAll runs before any apply/destroy operations.
 	BeforeAll []HookStep `yaml:"beforeAll,omitempty"`
-	AfterAll  []HookStep `yaml:"afterAll,omitempty"`
+	// AfterAll runs after all apply/destroy operations.
+	AfterAll []HookStep `yaml:"afterAll,omitempty"`
 }
 
 // ResourceHooks describes hooks bound to a particular infrastructure item or service.
 type ResourceHooks struct {
-	BeforeApply   []HookStep `yaml:"beforeApply,omitempty"`
-	AfterApply    []HookStep `yaml:"afterApply,omitempty"`
+	// BeforeApply runs before applying resource manifests.
+	BeforeApply []HookStep `yaml:"beforeApply,omitempty"`
+	// AfterApply runs after applying resource manifests.
+	AfterApply []HookStep `yaml:"afterApply,omitempty"`
+	// BeforeDestroy runs before deleting resource manifests.
 	BeforeDestroy []HookStep `yaml:"beforeDestroy,omitempty"`
-	AfterDestroy  []HookStep `yaml:"afterDestroy,omitempty"`
+	// AfterDestroy runs after deleting resource manifests.
+	AfterDestroy []HookStep `yaml:"afterDestroy,omitempty"`
 }
 
 // HookStep describes a single hook execution step.
 // It can either run a shell command or invoke a built-in action via Use.
 type HookStep struct {
-	Name            string         `yaml:"name,omitempty"`
-	Run             string         `yaml:"run,omitempty"`
-	Use             string         `yaml:"use,omitempty"`
-	With            map[string]any `yaml:"with,omitempty"`
-	When            string         `yaml:"when,omitempty"`
-	ContinueOnError bool           `yaml:"continueOnError,omitempty"`
-	Timeout         string         `yaml:"timeout,omitempty"`
+	// Name is the identifier used in logs.
+	Name string `yaml:"name,omitempty"`
+	// Run is a shell command template to execute.
+	Run string `yaml:"run,omitempty"`
+	// Use selects a built-in hook implementation.
+	Use string `yaml:"use,omitempty"`
+	// With provides parameters to built-in hooks.
+	With map[string]any `yaml:"with,omitempty"`
+	// When is a template expression that enables the hook.
+	When string `yaml:"when,omitempty"`
+	// ContinueOnError skips failures when set.
+	ContinueOnError bool `yaml:"continueOnError,omitempty"`
+	// Timeout is a duration string for the hook execution.
+	Timeout string `yaml:"timeout,omitempty"`
 }
 
 // LoadOptions describes parameters that influence template rendering of services.yaml.
 type LoadOptions struct {
-	Env       string
+	// Env is the target environment name.
+	Env string
+	// Namespace overrides the derived namespace.
 	Namespace string
-	Slot      int
-	UserVars  env.Vars
-	VarFiles  []string
+	// Slot is the slot number for slot-based envs.
+	Slot int
+	// UserVars are inline variables for template rendering.
+	UserVars env.Vars
+	// VarFiles lists additional var-files to load.
+	VarFiles []string
 }
 
 // TemplateContext represents the data exposed to Go-templates when rendering services.yaml
 // and other project templates (manifests, prompts, Codex config).
 type TemplateContext struct {
-	Env            string
-	Namespace      string
-	Project        string
-	ProjectRoot    string
-	Slot           int
-	Now            time.Time
-	UserVars       env.Vars
-	EnvMap         env.Vars
-	Versions       map[string]string
-	BaseDomain     map[string]string
-	Codex          CodexConfig
-	IssueComments  []promptctx.IssueComment
+	// Env is the selected environment name.
+	Env string
+	// Namespace is the resolved or overridden namespace.
+	Namespace string
+	// Project is the project identifier.
+	Project string
+	// ProjectRoot is the path to the project root on disk.
+	ProjectRoot string
+	// Slot is the slot number used for ai environments.
+	Slot int
+	// Now is the timestamp captured for template rendering.
+	Now time.Time
+	// UserVars contains inline user variables.
+	UserVars env.Vars
+	// EnvMap merges OS env, envFiles, and user variables.
+	EnvMap env.Vars
+	// Versions contains version strings from services.yaml.
+	Versions map[string]string
+	// BaseDomain maps environment name to base domain.
+	BaseDomain map[string]string
+	// Codex provides Codex-specific configuration for templates.
+	Codex CodexConfig
+	// IssueComments contains related GitHub issue comments.
+	IssueComments []promptctx.IssueComment
+	// ReviewComments contains related PR review comments.
 	ReviewComments []promptctx.ReviewComment
 }
 

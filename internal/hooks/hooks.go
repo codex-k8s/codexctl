@@ -27,9 +27,13 @@ type Executor struct {
 
 // StepContext provides runtime information available during hook execution.
 type StepContext struct {
-	Stack      *config.StackConfig
-	Template   config.TemplateContext
-	EnvName    string
+	// Stack is the current stack configuration.
+	Stack *config.StackConfig
+	// Template is the template context for rendering hook data.
+	Template config.TemplateContext
+	// EnvName is the target environment name.
+	EnvName string
+	// KubeClient provides kubectl execution for built-in hooks.
 	KubeClient *kube.Client
 }
 
@@ -54,6 +58,7 @@ func (e *Executor) RunSteps(ctx context.Context, steps []config.HookStep, stepCt
 	return nil
 }
 
+// runStep executes a single hook step, honoring when/timeout/run/use settings.
 func (e *Executor) runStep(parentCtx context.Context, step config.HookStep, stepCtx StepContext) error {
 	if strings.TrimSpace(step.When) != "" {
 		ok, err := e.evaluateWhen(step.When, stepCtx.Template)
@@ -88,6 +93,7 @@ func (e *Executor) runStep(parentCtx context.Context, step config.HookStep, step
 	}
 }
 
+// evaluateWhen renders and evaluates a when-expression for hooks.
 func (e *Executor) evaluateWhen(expr string, tmplCtx config.TemplateContext) (bool, error) {
 	rendered, err := config.RenderTemplate("when", []byte(expr), tmplCtx)
 	if err != nil {
@@ -104,6 +110,7 @@ func (e *Executor) evaluateWhen(expr string, tmplCtx config.TemplateContext) (bo
 	return true, nil
 }
 
+// runShell executes a hook step using a rendered shell command.
 func (e *Executor) runShell(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	cmdTextBytes, err := config.RenderTemplate("hook-run", []byte(step.Run), stepCtx.Template)
 	if err != nil {
@@ -130,6 +137,7 @@ func (e *Executor) runShell(ctx context.Context, step config.HookStep, stepCtx S
 	return nil
 }
 
+// runBuiltin dispatches a hook step to a built-in implementation.
 func (e *Executor) runBuiltin(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	switch step.Use {
 	case "kubectl.wait":
@@ -153,6 +161,7 @@ func (e *Executor) runBuiltin(ctx context.Context, step config.HookStep, stepCtx
 	}
 }
 
+// runKubectlWait implements the kubectl.wait built-in hook.
 func (e *Executor) runKubectlWait(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	if stepCtx.KubeClient == nil {
 		return fmt.Errorf("kubectl.wait requires a Kubernetes client")
@@ -189,6 +198,7 @@ func (e *Executor) runKubectlWait(ctx context.Context, step config.HookStep, ste
 	return stepCtx.KubeClient.RunRaw(ctx, nil, args...)
 }
 
+// runGitHubComment posts a comment via the gh CLI.
 func (e *Executor) runGitHubComment(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	token, ok := stepCtx.Template.EnvMap["CODEX_GH_PAT"]
 	if !ok || strings.TrimSpace(token) == "" {
@@ -244,6 +254,7 @@ func (e *Executor) runGitHubComment(ctx context.Context, step config.HookStep, s
 	return nil
 }
 
+// runSleep delays execution for a specified duration.
 func (e *Executor) runSleep(ctx context.Context, step config.HookStep) error {
 	raw, _ := step.With["duration"].(string)
 	if strings.TrimSpace(raw) == "" {
@@ -264,6 +275,7 @@ func (e *Executor) runSleep(ctx context.Context, step config.HookStep) error {
 	}
 }
 
+// runPreflight performs minimal checks required for hook execution.
 func (e *Executor) runPreflight(_ context.Context) error {
 	// Minimal preflight for hooks: verify that kubectl binary is available.
 	_, err := exec.LookPath("kubectl")
@@ -280,6 +292,7 @@ func (e *Executor) RunPreflightBasic(ctx context.Context) error {
 	return e.runPreflight(ctx)
 }
 
+// runEnsureDataDirs creates and chmods configured data directories.
 func (e *Executor) runEnsureDataDirs(_ context.Context, step config.HookStep, stepCtx StepContext) error {
 	if stepCtx.Stack == nil {
 		return fmt.Errorf("codex.ensure-data-dirs requires stack configuration")
@@ -313,6 +326,7 @@ func (e *Executor) runEnsureDataDirs(_ context.Context, step config.HookStep, st
 	return nil
 }
 
+// runEnsureCodexSecrets ensures required secrets exist in the target namespace.
 func (e *Executor) runEnsureCodexSecrets(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	if stepCtx.KubeClient == nil {
 		return fmt.Errorf("codex.ensure-codex-secrets requires a Kubernetes client")
@@ -356,6 +370,7 @@ func (e *Executor) runEnsureCodexSecrets(ctx context.Context, step config.HookSt
 	return nil
 }
 
+// runCheckDevHostPorts probes localhost ports and optional ingress host.
 func (e *Executor) runCheckDevHostPorts(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	host := ""
 	if raw, ok := step.With["host"]; ok {
@@ -399,6 +414,7 @@ func (e *Executor) runCheckDevHostPorts(ctx context.Context, step config.HookSte
 	return nil
 }
 
+// runReuseDevTLSSecret syncs a dev TLS secret with staging for reuse.
 func (e *Executor) runReuseDevTLSSecret(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	if stepCtx.KubeClient == nil {
 		return fmt.Errorf("codex.reuse-dev-tls-secret requires a Kubernetes client")
@@ -451,6 +467,7 @@ func (e *Executor) runReuseDevTLSSecret(ctx context.Context, step config.HookSte
 	return nil
 }
 
+// applyGenericSecret creates or updates a secret with literal key/value data.
 func applyGenericSecret(ctx context.Context, client *kube.Client, namespace, name string, data map[string]string) error {
 	if client == nil {
 		return fmt.Errorf("kubernetes client is nil")
@@ -475,6 +492,7 @@ func applyGenericSecret(ctx context.Context, client *kube.Client, namespace, nam
 	return client.RunRaw(ctx, manifest, "-n", namespace, "apply", "-f", "-")
 }
 
+// waitForSecret polls until a secret exists or the context is canceled.
 func waitForSecret(ctx context.Context, client *kube.Client, namespace, name string, attempts int, delay time.Duration) bool {
 	if client == nil || namespace == "" || name == "" {
 		return false
@@ -493,6 +511,7 @@ func waitForSecret(ctx context.Context, client *kube.Client, namespace, name str
 	return false
 }
 
+// copySecret copies a secret object between namespaces, stripping server metadata.
 func copySecret(ctx context.Context, client *kube.Client, srcNamespace, dstNamespace, name string) error {
 	if client == nil {
 		return fmt.Errorf("kubernetes client is nil")
@@ -523,6 +542,7 @@ func copySecret(ctx context.Context, client *kube.Client, srcNamespace, dstNames
 	return client.RunRaw(ctx, payload, "-n", dstNamespace, "apply", "-f", "-")
 }
 
+// sanitizeSecretMetadata removes server-owned metadata fields.
 func sanitizeSecretMetadata(obj map[string]any) {
 	if obj == nil {
 		return
@@ -539,6 +559,7 @@ func sanitizeSecretMetadata(obj map[string]any) {
 	delete(obj, "status")
 }
 
+// resolveNamespaceForEnv computes the namespace for a specific environment.
 func resolveNamespaceForEnv(stack *config.StackConfig, baseCtx config.TemplateContext, envName string) string {
 	if stack == nil || envName == "" {
 		return ""
@@ -563,6 +584,7 @@ func resolveNamespaceForEnv(stack *config.StackConfig, baseCtx config.TemplateCo
 	}
 }
 
+// toInt converts common numeric representations to int.
 func toInt(v any) (int, error) {
 	switch t := v.(type) {
 	case int:

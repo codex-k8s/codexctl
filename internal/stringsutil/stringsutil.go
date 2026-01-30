@@ -1,7 +1,9 @@
+// Package stringsutil provides small helpers for working with string slices.
 package stringsutil
 
 import "strings"
 
+// DedupeStrings returns a cleaned list of unique, non-empty strings preserving order.
 func DedupeStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil

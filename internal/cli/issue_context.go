@@ -12,6 +12,7 @@ import (
 	"github.com/codex-k8s/codexctl/internal/promptctx"
 )
 
+// applyIssueContext enriches template context with GitHub issue/PR comments.
 func applyIssueContext(
 	ctx context.Context,
 	logger *slog.Logger,
