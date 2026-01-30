@@ -7,7 +7,6 @@ If you update README.md, please update this file as well.
   <img src="docs/media/logo.png" alt="PAI logo" width="120" height="120" />
   <h1>codexctl</h1>
   <p>🧠 A tool for managing cloud-based planning and development workflows in a Kubernetes cluster via AI agents, based on <a href="https://github.com/openai/codex">OpenAI’s codex-cli</a> and GitHub workflows.</p>
-  <p>🚧 Alpha version. Breaking changes are possible.</p>
 </div>
 
 ![Go Version](https://img.shields.io/github/go-mod/go-version/codex-k8s/codexctl)
@@ -54,7 +53,7 @@ Local Go toolchain requirements:
 - Go **>= 1.25.1** (see `go.mod`).
 
 For instructions on preparing a VPS/self-hosted runner (microk8s, Docker, kubectl, gh, rsync, etc.), see:
-https://github.com/codex-k8s/project-example/blob/main/README_RU.md
+https://github.com/codex-k8s/project-example/blob/main/README.md
 
 `codexctl` is distributed as a Go CLI. With Go installed, you can install it with:
 
@@ -62,10 +61,10 @@ https://github.com/codex-k8s/project-example/blob/main/README_RU.md
 go install github.com/codex-k8s/codexctl/cmd/codexctl@latest
 ```
 
-Or install a specific version (replace `v999.999.999` with an actual SemVer tag):
+Or install a specific version (replace `v42.42.42` with an actual SemVer tag):
 
 ```bash
-go install github.com/codex-k8s/codexctl/cmd/codexctl@v999.999.999
+go install github.com/codex-k8s/codexctl/cmd/codexctl@v42.42.42
 ```
 
 Go package documentation is available on pkg.go.dev: https://pkg.go.dev/github.com/codex-k8s/codexctl.
@@ -97,7 +96,7 @@ Future plan: gradually replace some external dependencies with built-in implemen
 sync logic, etc.) via SDKs/libraries, to reduce the set of required binaries and make runs more predictable.
 
 For a practical guide to installing the required tools on a VPS for a runner, see:
-https://github.com/codex-k8s/project-example/blob/main/README_RU.md
+https://github.com/codex-k8s/project-example/blob/main/README.md
 
 ---
 

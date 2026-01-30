@@ -61,7 +61,7 @@ Contributions of all kinds are welcome: bug reports, documentation fixes, small 
 - Keep functions small and focused; avoid unnecessary complexity.
 - Prefer clear, explicit naming over abbreviations.
 - Write doc comments for exported types and functions in English.
-- Update `README.md` / `README_RU.md` when behavior or CLI interface changes.
+- Update `README.md` / `README_EN.md` when behavior or CLI interface changes.
 
 ## Reporting issues
 

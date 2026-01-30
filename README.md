@@ -2,7 +2,6 @@
   <img src="docs/media/logo.png" alt="PAI logo" width="120" height="120" />
   <h1>codexctl</h1>
   <p>🧠 Инструмент для управления облачными процессами планирования и разработки в Kubernetes‑кластере через ИИ‑агентов на основе <a href="https://github.com/openai/codex">codex-cli от OpenAI</a> и GitHub‑workflow.</p>
-  <p>🚧 Альфа‑версия. Возможны ломающие изменения.</p>
 </div>
 
 ![Go Version](https://img.shields.io/github/go-mod/go-version/codex-k8s/codexctl)
@@ -49,7 +48,7 @@
 - Go **>= 1.25.1** (см. `go.mod`).
 
 Инструкцию по подготовке VPS/self-hosted runner (microk8s, Docker, kubectl, gh, rsync и т.д.) см. в:
-https://github.com/codex-k8s/project-example/blob/main/README_RU.md
+https://github.com/codex-k8s/project-example/blob/main/README.md
 
 `codexctl` распространяется как Go‑CLI. При установленном Go‑toolchain его можно поставить командой:
 
@@ -57,10 +56,10 @@ https://github.com/codex-k8s/project-example/blob/main/README_RU.md
 go install github.com/codex-k8s/codexctl/cmd/codexctl@latest
 ```
 
-Либо установить конкретную версию (подставив актуальный SemVer‑тег вместо `v999.999.999`):
+Либо установить конкретную версию (подставив актуальный SemVer‑тег вместо `v42.42.42`):
 
 ```bash
-go install github.com/codex-k8s/codexctl/cmd/codexctl@v999.999.999
+go install github.com/codex-k8s/codexctl/cmd/codexctl@v42.42.42
 ```
 
 Документация Go‑пакетов доступна на pkg.go.dev: https://pkg.go.dev/github.com/codex-k8s/codexctl.
@@ -93,7 +92,7 @@ go install github.com/codex-k8s/codexctl/cmd/codexctl@v999.999.999
 запуски более предсказуемыми.
 
 Практическую инструкцию по установке необходимых утилит на VPS для runner’а см. в:
-https://github.com/codex-k8s/project-example/blob/main/README_RU.md
+https://github.com/codex-k8s/project-example/blob/main/README.md
 
 ---
 
