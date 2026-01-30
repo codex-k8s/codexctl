@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codex-k8s/codexctl/internal/config"
+	"github.com/codex-k8s/codexctl/internal/ghoutput"
 	"github.com/codex-k8s/codexctl/internal/prompt"
 )
 
@@ -24,7 +25,82 @@ func newPRCommand(opts *Options) *cobra.Command {
 		"pr",
 		"Helpers for Pull Request workflows (auto-commit and comments)",
 		newPRReviewApplyCommand(opts),
+		newPRDetectCommand(opts),
 	)
+}
+
+// prListItem describes a minimal gh pr list response item.
+type prListItem struct {
+	// Number is the PR number.
+	Number int `json:"number"`
+}
+
+// newPRDetectCommand creates "pr detect" that resolves a PR by head branch.
+func newPRDetectCommand(_ *Options) *cobra.Command {
+	var (
+		branch string
+		repo   string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "detect",
+		Short: "Detect a Pull Request number by branch name",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+			if !cmd.Flags().Changed("branch") && envPresent("CODEXCTL_BRANCH") {
+				branch = strings.TrimSpace(os.Getenv("CODEXCTL_BRANCH"))
+			}
+			if !cmd.Flags().Changed("repo") && envPresent("CODEXCTL_REPO") {
+				repo = strings.TrimSpace(os.Getenv("CODEXCTL_REPO"))
+			}
+			if branch == "" {
+				return fmt.Errorf("detect requires --branch or CODEXCTL_BRANCH env")
+			}
+			repo = resolveGitHubRepo(repo)
+			if repo == "" {
+				return fmt.Errorf("detect requires --repo or CODEXCTL_REPO env")
+			}
+
+			token, err := lookupGitHubToken()
+			if err != nil {
+				return err
+			}
+
+			args := []string{
+				"pr", "list",
+				"--repo", repo,
+				"--head", branch,
+				"--json", "number",
+			}
+			payload, err := runGHJSON(cmd.Context(), logger, token, args, "repo", repo, "branch", branch, "args", args)
+			if err != nil {
+				return fmt.Errorf("gh pr list failed: %w", err)
+			}
+
+			var prs []prListItem
+			if err := json.Unmarshal(payload, &prs); err != nil {
+				return fmt.Errorf("decode gh pr list output: %w", err)
+			}
+			if len(prs) == 0 || prs[0].Number <= 0 {
+				logger.Warn("PR not found for branch", "branch", branch, "repo", repo)
+				return nil
+			}
+
+			writeErr := ghoutput.Write(map[string]string{
+				"codexctl_pr_number": strconv.Itoa(prs[0].Number),
+			})
+			if writeErr != nil {
+				return writeErr
+			}
+
+			fmt.Printf("codexctl_pr_number: %d\n", prs[0].Number)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&branch, "branch", "", "Branch name to match (defaults to CODEXCTL_BRANCH)")
+	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository slug owner/repo (defaults to CODEXCTL_REPO)")
+	return cmd
 }
 
 // newPRReviewApplyCommand creates "pr review-apply" that commits Codex changes for a PR branch

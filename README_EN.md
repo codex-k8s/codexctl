@@ -729,6 +729,14 @@ child Issues with `AI-PLAN-PARENT: #<root>` are implemented by separate AI-dev s
   - runs `git add/commit/push` to the PR branch;
   - posts a comment on the PR with links to the environment.
 
+`pr detect` — finds a PR by branch and writes `codexctl_pr_number` to `GITHUB_OUTPUT`.
+
+```bash
+export CODEXCTL_BRANCH="codex/issue-123"
+export CODEXCTL_REPO="owner/repo"
+codexctl pr detect
+```
+
 ---
 
 ## 🌍 6. Environment variables
@@ -774,11 +782,21 @@ It assumes a self-hosted runner where the following are already installed: `code
 ### 🚀 7.1. Deploy staging (push to `main`)
 
 ```yaml
-name: "Staging deploy 🚀"
+name: "Staging deploy  🚀"
 
 on:
   push:
     branches: [main]
+
+env:
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_ENV:            staging
+  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_REPO:           ${{ github.repository }}
 
 concurrency:
   group: staging-deploy
@@ -802,15 +820,12 @@ jobs:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
 
       - name: "Sync staging sources 📂"
-        env:
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
         run: |
           set -euo pipefail
           codexctl ci sync-sources
 
       - name: "Prepare images via codexctl 🪞🏗️"
         env:
-          CODEXCTL_ENV:          staging
           CODEXCTL_MIRROR_IMAGES: true
           CODEXCTL_BUILD_IMAGES:  true
           REGISTRY_HOST: localhost:32000
@@ -824,19 +839,10 @@ jobs:
           NO_PROXY:             127.0.0.1,localhost,::1
           GITHUB_RUN_ID:        ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            staging
           CODEXCTL_PREFLIGHT:      true
           CODEXCTL_WAIT:           true
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
-          CODEXCTL_CODE_ROOT_BASE:       ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-          CODEXCTL_DATA_ROOT:            ${{ vars.CODEXCTL_DATA_ROOT }}
-          POSTGRES_USER:        ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
-          REDIS_PASSWORD:       ${{ secrets.REDIS_PASSWORD }}
-          SECRET_KEY:           ${{ secrets.SECRET_KEY }}
         run: |
           set -euo pipefail
           codexctl ci apply
@@ -888,9 +894,18 @@ on:
     types: [labeled]
 
 env:
-  CODEXCTL_ALLOWED_USERS: ${{ vars.CODEXCTL_ALLOWED_USERS }}
-  CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-  CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
 concurrency:
   group: ai-plan-${{ github.event.issue.number }}
   cancel-in-progress: false
@@ -918,11 +933,7 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
-          CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
         run: |
           set -euo pipefail
           codexctl ci ensure-slot
@@ -948,14 +959,8 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_SLOT:           ${{ needs.create-ai-plan.outputs.slot }}
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
-          CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-          CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
           CODEXCTL_SOURCE:         .
           CODEXCTL_PREPARE_IMAGES: true
           CODEXCTL_APPLY:          true
@@ -963,14 +968,8 @@ jobs:
           CODEXCTL_WAIT_SOFT_FAIL: true
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
-          POSTGRES_USER:           ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD:       ${{ secrets.POSTGRES_PASSWORD }}
-          REDIS_PASSWORD:          ${{ secrets.REDIS_PASSWORD }}
-          SECRET_KEY:              ${{ secrets.SECRET_KEY }}
         run: |
           set -euo pipefail
-          export CODEXCTL_WORKSPACE_UID="$(id -u)"
-          export CODEXCTL_WORKSPACE_GID="$(id -g)"
           codexctl ci ensure-ready
 
   run-codex-plan:
@@ -979,8 +978,8 @@ jobs:
     runs-on: self-hosted
     environment: staging
     env:
-      CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+      CODEXCTL_INFRA_UNHEALTHY: ${{ needs.deploy-ai-plan.outputs.infra_unhealthy }}
     steps:
       - name: "Checkout default branch 📥"
         uses: actions/checkout@v4
@@ -991,14 +990,9 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_SLOT:           ${{ needs.create-ai-plan.outputs.slot }}
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
           CODEXCTL_NAMESPACE:      ${{ needs.create-ai-plan.outputs.namespace }}
-          CODEXCTL_LANG:    ru
-          CODEXCTL_INFRA_UNHEALTHY: ${{ needs.deploy-ai-plan.outputs.infra_unhealthy }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
         run: |
@@ -1007,13 +1001,14 @@ jobs:
 
   cleanup-ai-plan:
     needs: [create-ai-plan, deploy-ai-plan, run-codex-plan]
-    if: always()
+    if: >
+      always() &&
+      (needs.create-ai-plan.result != 'success' || needs.deploy-ai-plan.result != 'success' || needs.run-codex-plan.result != 'success')
     name: "Cleanup plan env on failure 🧹"
     runs-on: self-hosted
     environment: staging
     env:
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
-      CODEXCTL_DATA_ROOT: ${{ vars.CODEXCTL_DATA_ROOT }}
     steps:
       - name: "Checkout minimal 📥"
         uses: actions/checkout@v4
@@ -1022,21 +1017,10 @@ jobs:
 
       - name: "Cleanup AI plan slot on failure (global) 🧹"
         env:
-          CODEXCTL_ENV:          ai
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
           CODEXCTL_WITH_CONFIGMAP: true
         run: |
           set -euo pipefail
-
-          STATUS_CREATE="${{ needs.create-ai-plan.result }}"
-          STATUS_DEPLOY="${{ needs.deploy-ai-plan.result }}"
-          STATUS_RUN="${{ needs.run-codex-plan.result }}"
-
-          if [ "${STATUS_CREATE}" = "success" ] && [ "${STATUS_DEPLOY}" = "success" ] && [ "${STATUS_RUN}" = "success" ]; then
-            echo "info: primary AI Plan workflow completed successfully, no cleanup required" >&2
-            exit 0
-          fi
-
           codexctl manage-env cleanup || true
 ```
 
@@ -1056,9 +1040,18 @@ on:
     types: [created]
 
 env:
-  CODEXCTL_ALLOWED_USERS: ${{ vars.CODEXCTL_ALLOWED_USERS }}
-  CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-  CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
 concurrency:
   group: ai-plan-review-${{ github.event.issue.number }}
   cancel-in-progress: false
@@ -1073,18 +1066,10 @@ jobs:
     runs-on: self-hosted
     environment: staging
     env:
-      CODEXCTL_CODE_ROOT_BASE:       ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-      CODEXCTL_DATA_ROOT:            ${{ vars.CODEXCTL_DATA_ROOT }}
       GITHUB_RUN_ID:        ${{ github.run_id }}
-      CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-      CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
       OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
       CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
-      POSTGRES_USER:        ${{ secrets.POSTGRES_USER }}
-      POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
-      REDIS_PASSWORD:       ${{ secrets.REDIS_PASSWORD }}
-      SECRET_KEY:           ${{ secrets.SECRET_KEY }}
     steps:
       - name: "Checkout project-example 📥"
         uses: actions/checkout@v4
@@ -1097,7 +1082,6 @@ jobs:
         id: root_issue
         env:
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
-          CODEXCTL_REPO:         ${{ github.repository }}
           CODEXCTL_GH_PAT:       ${{ secrets.CODEXCTL_GH_PAT }}
         run: |
           set -euo pipefail
@@ -1117,31 +1101,22 @@ jobs:
       - name: "Resolve slot and namespace for root issue 📇"
         id: card
         env:
-          CODEXCTL_ENV:            ai
           CODEXCTL_ISSUE_NUMBER:   ${{ steps.root_issue.outputs.root }}
-          CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
           CODEXCTL_SOURCE:         .
           CODEXCTL_PREPARE_IMAGES: true
           CODEXCTL_APPLY:          true
         run: |
           set -euo pipefail
-          echo "info: ensuring AI planning environment ready via codexctl (ensure-ready)" >&2
-          export CODEXCTL_WORKSPACE_UID="$(id -u)"
-          export CODEXCTL_WORKSPACE_GID="$(id -g)"
           codexctl ci ensure-ready
 
       - name: "Run planning review agent via codexctl 🤖"
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
           CODEXCTL_NAMESPACE:      ${{ steps.card.outputs.namespace }}
           CODEXCTL_ISSUE_NUMBER:   ${{ steps.root_issue.outputs.root }}
           CODEXCTL_FOCUS_ISSUE_NUMBER: ${{ steps.root_issue.outputs.focus }}
-          CODEXCTL_LANG:    ru
           CODEXCTL_PROMPT_CONTINUATION: ${{ steps.card.outputs.codexctl_new_env == 'true' && 'true' || 'false' }}
           CODEXCTL_RESUME:         ${{ steps.card.outputs.codexctl_new_env == 'true' && 'false' || 'true' }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
@@ -1173,9 +1148,18 @@ on:
     types: [labeled]
 
 env:
-  CODEXCTL_ALLOWED_USERS: ${{ vars.CODEXCTL_ALLOWED_USERS }}
-  CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-  CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
 concurrency:
   group: ai-issue-${{ github.event.issue.number }}
   cancel-in-progress: false
@@ -1183,9 +1167,7 @@ concurrency:
 jobs:
   create-ai:
     name: "Allocate slot 🧩"
-    if: >-
-      github.event.label.name == '[ai-dev]' &&
-      contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
+    if: github.event.label.name == '[ai-dev]' && contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
     timeout-minutes: 360
     environment: staging
@@ -1203,11 +1185,7 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
-          CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
         run: |
           set -euo pipefail
           codexctl ci ensure-slot
@@ -1233,14 +1211,8 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_SLOT:           ${{ needs.create-ai.outputs.slot }}
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
-          CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-          CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
           CODEXCTL_SOURCE:         .
           CODEXCTL_PREPARE_IMAGES: true
           CODEXCTL_APPLY:          true
@@ -1248,14 +1220,8 @@ jobs:
           CODEXCTL_WAIT_SOFT_FAIL: true
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
-          POSTGRES_USER:           ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD:       ${{ secrets.POSTGRES_PASSWORD }}
-          REDIS_PASSWORD:          ${{ secrets.REDIS_PASSWORD }}
-          SECRET_KEY:              ${{ secrets.SECRET_KEY }}
         run: |
           set -euo pipefail
-          export CODEXCTL_WORKSPACE_UID="$(id -u)"
-          export CODEXCTL_WORKSPACE_GID="$(id -g)"
           codexctl ci ensure-ready
 
   run-codex:
@@ -1264,8 +1230,8 @@ jobs:
     runs-on: self-hosted
     environment: staging
     env:
-      CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
+      CODEXCTL_INFRA_UNHEALTHY: ${{ needs.deploy-ai.outputs.infra_unhealthy }}
     steps:
       - name: "Checkout default branch 📥"
         uses: actions/checkout@v4
@@ -1288,14 +1254,9 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_SLOT:           ${{ needs.create-ai.outputs.slot }}
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
           CODEXCTL_NAMESPACE:      ${{ needs.create-ai.outputs.namespace }}
-          CODEXCTL_LANG:    ru
-          CODEXCTL_INFRA_UNHEALTHY: ${{ needs.deploy-ai.outputs.infra_unhealthy }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
         run: |
@@ -1332,29 +1293,15 @@ jobs:
       - name: "Detect PR for issue branch 🔎"
         id: detect_pr
         env:
-          CODEXCTL_SLOT:         ${{ needs.create-ai.outputs.slot }}
-          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
-          CODEXCTL_REPO:     ${{ github.repository }}
+          CODEXCTL_BRANCH:       codex/issue-${{ github.event.issue.number }}
           CODEXCTL_GH_PAT:       ${{ secrets.CODEXCTL_GH_PAT }}
         run: |
           set -euo pipefail
-          BRANCH="codex/issue-${CODEXCTL_ISSUE_NUMBER}"
-          cd "${CODEXCTL_CODE_ROOT_BASE}/${CODEXCTL_SLOT}/src"
-
-          printf '%s' "${CODEXCTL_GH_PAT}" | gh auth login --with-token >/dev/null 2>&1 || true
-
-          PRN="$(gh pr list --head "${BRANCH}" --json number -q '.[0].number' 2>/dev/null || true)"
-          if [ -z "${PRN}" ]; then
-            echo "warn: PR not found for branch ${BRANCH}" >&2
-            exit 0
-          fi
-
-          echo "codexctl_pr_number=${PRN}" >> "$GITHUB_OUTPUT"
+          codexctl pr detect
 
       - name: "Attach PR number to slot 🏷️"
         if: steps.detect_pr.outputs.codexctl_pr_number != ''
         env:
-          CODEXCTL_ENV:      ai
           CODEXCTL_SLOT:     ${{ needs.create-ai.outputs.slot }}
           CODEXCTL_PR_NUMBER: ${{ steps.detect_pr.outputs.codexctl_pr_number }}
         run: |
@@ -1364,10 +1311,8 @@ jobs:
       - name: "Comment to PR with env links 🔗"
         if: steps.detect_pr.outputs.codexctl_pr_number != ''
         env:
-          CODEXCTL_ENV:       ai
           CODEXCTL_SLOT:      ${{ needs.create-ai.outputs.slot }}
           CODEXCTL_PR_NUMBER: ${{ steps.detect_pr.outputs.codexctl_pr_number }}
-          CODEXCTL_LANG:      ru
           CODEXCTL_GH_PAT:    ${{ secrets.CODEXCTL_GH_PAT }}
         run: |
           set -euo pipefail
@@ -1375,13 +1320,14 @@ jobs:
 
   cleanup-ai:
     needs: [create-ai, deploy-ai, run-codex]
-    if: always()
+    if: >
+      always() &&
+      (needs.create-ai.result != 'success' || needs.deploy-ai.result != 'success' || needs.run-codex.result != 'success')
     name: "Cleanup on failure 🧹"
     runs-on: self-hosted
     environment: staging
     env:
       CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
-      CODEXCTL_DATA_ROOT: ${{ vars.CODEXCTL_DATA_ROOT }}
     steps:
       - name: "Checkout minimal 📥"
         uses: actions/checkout@v4
@@ -1390,21 +1336,10 @@ jobs:
 
       - name: "Cleanup AI slot on failure (global) 🧹"
         env:
-          CODEXCTL_ENV:          ai
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
           CODEXCTL_WITH_CONFIGMAP: true
         run: |
           set -euo pipefail
-
-          STATUS_CREATE="${{ needs.create-ai.result }}"
-          STATUS_DEPLOY="${{ needs.deploy-ai.result }}"
-          STATUS_RUN="${{ needs.run-codex.result }}"
-
-          if [ "${STATUS_CREATE}" = "success" ] && [ "${STATUS_DEPLOY}" = "success" ] && [ "${STATUS_RUN}" = "success" ]; then
-            echo "info: primary AI Dev Issue workflow completed successfully, no cleanup required" >&2
-            exit 0
-          fi
-
           codexctl manage-env cleanup || true
 ```
 
@@ -1423,9 +1358,20 @@ on:
     types: [submitted]
 
 env:
-  CODEXCTL_ALLOWED_USERS: ${{ vars.CODEXCTL_ALLOWED_USERS }}
-  CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-  CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
+  CODEXCTL_BRANCH:         ${{ github.event.pull_request.head.ref }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
 concurrency:
   group: ai-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: false
@@ -1439,18 +1385,10 @@ jobs:
     runs-on: self-hosted
     environment: staging
     env:
-      CODEXCTL_CODE_ROOT_BASE:       ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-      CODEXCTL_DATA_ROOT:            ${{ vars.CODEXCTL_DATA_ROOT }}
       GITHUB_RUN_ID:        ${{ github.run_id }}
-      CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-      CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
       OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
       CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
-      POSTGRES_USER:        ${{ secrets.POSTGRES_USER }}
-      POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
-      REDIS_PASSWORD:       ${{ secrets.REDIS_PASSWORD }}
-      SECRET_KEY:           ${{ secrets.SECRET_KEY }}
     steps:
       - name: "Checkout PR head 📥"
         uses: actions/checkout@v4
@@ -1462,30 +1400,19 @@ jobs:
       - name: "Ensure slot and namespace for PR 📇"
         id: card
         env:
-          CODEXCTL_ENV:           ai
-          CODEXCTL_PR_NUMBER:     ${{ github.event.pull_request.number }}
-          CODEXCTL_DEV_SLOTS_MAX: ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
           CODEXCTL_SOURCE:        .
           CODEXCTL_PREPARE_IMAGES: true
           CODEXCTL_APPLY:          true
         run: |
           set -euo pipefail
-          echo "info: ensuring AI PR review environment ready via codexctl (ensure-ready)" >&2
-          export CODEXCTL_WORKSPACE_UID="$(id -u)"
-          export CODEXCTL_WORKSPACE_GID="$(id -g)"
           codexctl ci ensure-ready
 
       - name: "Run Codex review-fix agent 🤖"
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai
           CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
           CODEXCTL_NAMESPACE:      ${{ steps.card.outputs.namespace }}
-          CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
-          CODEXCTL_LANG:    ru
           CODEXCTL_PROMPT_CONTINUATION: ${{ steps.card.outputs.codexctl_new_env == 'true' && 'true' || 'false' }}
           CODEXCTL_RESUME:         ${{ steps.card.outputs.codexctl_new_env == 'true' && 'false' || 'true' }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
@@ -1496,11 +1423,7 @@ jobs:
 
       - name: "Apply review changes and comment 💾"
         env:
-          CODEXCTL_ENV:         ai
           CODEXCTL_SLOT:        ${{ steps.card.outputs.slot }}
-          CODEXCTL_PR_NUMBER:   ${{ github.event.pull_request.number }}
-          CODEXCTL_LANG:        ru
-          CODEXCTL_REPO:    ${{ github.repository }}
           CODEXCTL_GH_PAT:      ${{ secrets.CODEXCTL_GH_PAT }}
         run: |
           set -euo pipefail
@@ -1521,9 +1444,18 @@ on:
     types: [labeled]
 
 env:
-  CODEXCTL_ALLOWED_USERS: ${{ vars.CODEXCTL_ALLOWED_USERS }}
-  CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-  CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai-repair
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
 concurrency:
   group: ai-repair-${{ github.event.issue.number }}
   cancel-in-progress: false
@@ -1551,11 +1483,7 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai-repair
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
-          CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
         run: |
           set -euo pipefail
           codexctl ci ensure-slot
@@ -1573,8 +1501,6 @@ jobs:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
 
       - name: "Sync staging sources 📂"
-        env:
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
         run: |
           set -euo pipefail
           codexctl ci sync-sources
@@ -1583,9 +1509,6 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai-repair
           CODEXCTL_SLOT:           ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_PREFLIGHT:      true
           CODEXCTL_WAIT:           true
@@ -1593,22 +1516,13 @@ jobs:
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-          CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
-          POSTGRES_USER:           ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD:       ${{ secrets.POSTGRES_PASSWORD }}
-          REDIS_PASSWORD:          ${{ secrets.REDIS_PASSWORD }}
-          SECRET_KEY:              ${{ secrets.SECRET_KEY }}
         run: |
           set -euo pipefail
-          export CODEXCTL_WORKSPACE_UID="$(id -u)"
-          export CODEXCTL_WORKSPACE_GID="$(id -g)"
           codexctl ci apply
 
       - name: "Cleanup staging repair env on failure 🧹"
         if: failure() || cancelled()
         env:
-          CODEXCTL_ENV:  ai-repair
           CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_WITH_CONFIGMAP: true
         run: |
@@ -1621,7 +1535,6 @@ jobs:
     runs-on: self-hosted
     environment: staging
     env:
-      CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
     steps:
       - name: "Checkout default branch 📥"
@@ -1630,8 +1543,6 @@ jobs:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
 
       - name: "Sync staging sources 📂"
-        env:
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
         run: |
           set -euo pipefail
           codexctl ci sync-sources
@@ -1652,27 +1563,18 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai-repair
           CODEXCTL_SLOT:           ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_NAMESPACE:      ${{ needs.create-ai-repair.outputs.namespace }}
           CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
-          CODEXCTL_LANG:    ru
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${CODEXCTL_SLOT}" ] || [ "${CODEXCTL_SLOT}" = "0" ]; then
-            echo "error: CODEXCTL_SLOT is empty or 0" >&2
-            exit 1
-          fi
           codexctl prompt run --kind ai-repair_issue
 
       - name: "Cleanup staging repair env on failure 🧹"
         if: failure() || cancelled()
         env:
-          CODEXCTL_ENV:  ai-repair
           CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_WITH_CONFIGMAP: true
         run: |
@@ -1712,29 +1614,15 @@ jobs:
       - name: "Detect PR for issue branch 🔎"
         id: detect_pr
         env:
-          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
-          CODEXCTL_REPO: ${{ github.repository }}
+          CODEXCTL_BRANCH: codex/ai-repair-${{ github.event.issue.number }}
           CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
         run: |
           set -euo pipefail
-          BRANCH="codex/ai-repair-${CODEXCTL_ISSUE_NUMBER}"
-          WORKDIR="${CODEXCTL_CODE_ROOT_BASE}/staging/src"
-          cd "${WORKDIR}"
-
-          printf '%s' "${CODEXCTL_GH_PAT}" | gh auth login --with-token >/dev/null 2>&1 || true
-
-          PRN="$(gh pr list --head "${BRANCH}" --json number -q '.[0].number' 2>/dev/null || true)"
-          if [ -z "${PRN}" ]; then
-            echo "warn: PR not found for branch ${BRANCH}" >&2
-            exit 0
-          fi
-
-          echo "codexctl_pr_number=${PRN}" >> "$GITHUB_OUTPUT"
+          codexctl pr detect
 
       - name: "Attach PR number to slot 🏷️"
         if: steps.detect_pr.outputs.codexctl_pr_number != ''
         env:
-          CODEXCTL_ENV:      ai-repair
           CODEXCTL_SLOT:     ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_PR_NUMBER: ${{ steps.detect_pr.outputs.codexctl_pr_number }}
         run: |
@@ -1744,10 +1632,8 @@ jobs:
       - name: "Comment to PR with env links 🔗"
         if: steps.detect_pr.outputs.codexctl_pr_number != ''
         env:
-          CODEXCTL_ENV:       ai-repair
           CODEXCTL_SLOT:      ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_PR_NUMBER: ${{ steps.detect_pr.outputs.codexctl_pr_number }}
-          CODEXCTL_LANG:      ru
           CODEXCTL_GH_PAT:    ${{ secrets.CODEXCTL_GH_PAT }}
         run: |
           set -euo pipefail
@@ -1770,9 +1656,20 @@ on:
     types: [submitted]
 
 env:
-  CODEXCTL_ALLOWED_USERS: ${{ vars.CODEXCTL_ALLOWED_USERS }}
-  CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-  CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai-repair
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
+  CODEXCTL_BRANCH:         ${{ github.event.pull_request.head.ref }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
 concurrency:
   group: ai-repair-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: false
@@ -1787,19 +1684,11 @@ jobs:
     runs-on: self-hosted
     environment: staging
     env:
-      CODEXCTL_CODE_ROOT_BASE:       ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-      CODEXCTL_DATA_ROOT:            ${{ vars.CODEXCTL_DATA_ROOT }}
       GITHUB_RUN_ID:        ${{ github.run_id }}
-      CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-      CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
       KUBECONFIG:           /home/runner/.kube/microk8s.config
       OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
       CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
-      POSTGRES_USER:        ${{ secrets.POSTGRES_USER }}
-      POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
-      REDIS_PASSWORD:       ${{ secrets.REDIS_PASSWORD }}
-      SECRET_KEY:           ${{ secrets.SECRET_KEY }}
     steps:
       - name: "Checkout PR head 📥"
         uses: actions/checkout@v4
@@ -1809,19 +1698,12 @@ jobs:
           fetch-depth: 0
 
       - name: "Sync staging sources 📂"
-        env:
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
         run: |
           set -euo pipefail
-          if [ -z "${CODEXCTL_CODE_ROOT_BASE:-}" ]; then
           codexctl ci sync-sources
 
       - name: "Resolve slot and namespace for PR 📇"
         id: card
-        env:
-          CODEXCTL_ENV:           ai-repair
-          CODEXCTL_PR_NUMBER:     ${{ github.event.pull_request.number }}
-          CODEXCTL_DEV_SLOTS_MAX: ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
         run: |
           set -euo pipefail
           codexctl ci ensure-ready
@@ -1830,9 +1712,6 @@ jobs:
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai-repair
           CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
           CODEXCTL_PREFLIGHT:      true
           CODEXCTL_WAIT:           true
@@ -1840,29 +1719,16 @@ jobs:
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
-          CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-          CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
-          POSTGRES_USER:           ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD:       ${{ secrets.POSTGRES_PASSWORD }}
-          REDIS_PASSWORD:          ${{ secrets.REDIS_PASSWORD }}
-          SECRET_KEY:              ${{ secrets.SECRET_KEY }}
         run: |
           set -euo pipefail
-          export CODEXCTL_WORKSPACE_UID="$(id -u)"
-          export CODEXCTL_WORKSPACE_GID="$(id -g)"
           codexctl ci apply
 
       - name: "Run Codex staging repair review 🤖"
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
-          CODEXCTL_GH_USERNAME: ${{ vars.CODEXCTL_GH_USERNAME }}
-          CODEXCTL_GH_EMAIL:    ${{ vars.CODEXCTL_GH_EMAIL }}
-          CODEXCTL_ENV:            ai-repair
           CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
           CODEXCTL_NAMESPACE:      ${{ steps.card.outputs.namespace }}
-          CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
-          CODEXCTL_LANG:    ru
           CODEXCTL_PROMPT_CONTINUATION: ${{ (steps.card.outputs.codexctl_new_env == 'true' || steps.card.outputs.codexctl_env_ready != 'true') && 'true' || 'false' }}
           CODEXCTL_RESUME:         ${{ (steps.card.outputs.codexctl_new_env == 'true' || steps.card.outputs.codexctl_env_ready != 'true') && 'false' || 'true' }}
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
@@ -1873,11 +1739,7 @@ jobs:
 
       - name: "Apply review changes and comment 💾"
         env:
-          CODEXCTL_ENV:       ai-repair
           CODEXCTL_SLOT:      ${{ steps.card.outputs.slot }}
-          CODEXCTL_PR_NUMBER: ${{ github.event.pull_request.number }}
-          CODEXCTL_LANG:      ru
-          CODEXCTL_REPO:  ${{ github.repository }}
           CODEXCTL_GH_PAT:    ${{ secrets.CODEXCTL_GH_PAT }}
         run: |
           set -euo pipefail
@@ -1886,7 +1748,6 @@ jobs:
       - name: "Cleanup staging repair env on failure 🧹"
         if: (failure() || cancelled()) && steps.card.outputs.slot != ''
         env:
-          CODEXCTL_ENV:  ai-repair
           CODEXCTL_SLOT: ${{ steps.card.outputs.slot }}
           CODEXCTL_WITH_CONFIGMAP: true
         run: |
@@ -1911,35 +1772,58 @@ on:
   issues:
     types: [closed]
 
+env:
+  CODEXCTL_DATA_ROOT:     ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_WORKSPACE_UID: ${{ vars.CODEXCTL_WORKSPACE_UID }}
+  CODEXCTL_WORKSPACE_GID: ${{ vars.CODEXCTL_WORKSPACE_GID }}
+  CODEXCTL_PR_NUMBER:     ${{ github.event.pull_request.number || '' }}
+  CODEXCTL_BRANCH:        ${{ github.event.pull_request.head.ref || '' }}
+  CODEXCTL_REPO:          ${{ github.repository }}
+
+concurrency:
+  group: ai-cleanup-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   cleanup:
+    name: "Cleanup AI environments 🧼"
     runs-on: self-hosted
+    environment: staging
+    env:
+      CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
     steps:
-      - uses: actions/checkout@v4
+      - name: "Checkout project-example 📥"
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
-      - if: github.event_name == 'pull_request'
+
+      - name: "Cleanup for PR closed 🧹"
+        if: github.event_name == 'pull_request'
         env:
-          CODEXCTL_PR_NUMBER: ${{ github.event.pull_request.number }}
-          CODEXCTL_BRANCH: ${{ github.event.pull_request.head.ref }}
-          CODEXCTL_REPO: ${{ github.repository }}
           CODEXCTL_WITH_CONFIGMAP: true
           CODEXCTL_DELETE_BRANCH: true
-        run: codexctl manage-env cleanup-pr || true
-      - if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup-pr
+
+      - name: "Close linked Issue after merge ✅"
+        if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
         env:
-          CODEXCTL_BRANCH: ${{ github.event.pull_request.head.ref }}
-          CODEXCTL_REPO: ${{ github.repository }}
           CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
           CODEXCTL_CLOSE_ISSUE: true
-        run: codexctl manage-env close-linked-issue || true
-      - if: github.event_name == 'issues'
+        run: |
+          set -euo pipefail
+          codexctl manage-env close-linked-issue
+
+      - name: "Cleanup for Issue closed 🧹"
+        if: github.event_name == 'issues'
         env:
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
-          CODEXCTL_REPO: ${{ github.repository }}
           CODEXCTL_WITH_CONFIGMAP: true
           CODEXCTL_DELETE_BRANCH: true
-        run: codexctl manage-env cleanup-issue || true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup-issue
 ```
 
 Full example: `project-example` repo, `.github/workflows/ai_cleanup.yml`.
