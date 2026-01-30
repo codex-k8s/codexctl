@@ -419,6 +419,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// shellQuote returns a POSIX-safe single-quoted literal for sh -lc.
 func shellQuote(value string) string {
 	if value == "" {
 		return "''"
