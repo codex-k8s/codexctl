@@ -1,304 +1,460 @@
 <div align="center">
   <img src="docs/media/logo.png" alt="PAI logo" width="120" height="120" />
   <h1>codexctl</h1>
-  <p>🧠 A tool for managing cloud planning and development workflows in a Kubernetes cluster through AI agents based on <a href="https://github.com/openai/codex">OpenAI's codex-cli</a> and GitHub workflows.</p>
-  <p>🚧 Alpha version. Breaking changes are possible.</p>
+  <p>🧠 Инструмент для управления облачными процессами планирования и разработки в Kubernetes‑кластере через ИИ‑агентов на основе <a href="https://github.com/openai/codex">codex-cli от OpenAI</a> и GitHub‑workflow.</p>
+  <p>🚧 Альфа‑версия. Возможны ломающие изменения.</p>
 </div>
 
 ![Go Version](https://img.shields.io/github/go-mod/go-version/codex-k8s/codexctl)
 [![Go Reference](https://pkg.go.dev/badge/github.com/codex-k8s/codexctl.svg)](https://pkg.go.dev/github.com/codex-k8s/codexctl)
 
-`codexctl` is a CLI tool for declarative management of Kubernetes environments and dev-AI slots using a single
-`services.yaml` configuration file. It simplifies:
+🇬🇧 English version: [README_EN.md](README_EN.md)
 
-- deploying infrastructure (DBs, caches, ingress, observability) and applications in Kubernetes projects;
-- preparing temporary dev-AI environments for issues/PRs where a Codex agent works;
-- rendering manifests and configs (including the Codex config) using templates.
+`codexctl` — это CLI‑инструмент для декларативного управления Kubernetes‑окружениями и AI-dev слотами на базе одного
+файла конфигурации `services.yaml`. Он упрощает:
 
-Essentially, it is an "orchestrator on top of `kubectl` and templates" that is aware of:
+- развёртывание инфраструктуры (БД, кэши, ingress, observability) и приложений в Kubernetes‑проектах;
+- подготовку временных AI-dev окружений под задачи/PR, в которых работает Codex‑агент;
+- рендеринг манифестов и конфигов (включая конфиг Codex) с использованием шаблонов.
 
-- environments (`dev`, `staging`, `ai`);
-- slots (`ai` environments for issues/PRs);
-- project structure (infrastructure, services, the Codex agent Pod).
+По сути, это «оркестратор поверх `kubectl` и шаблонов», который знает про:
 
-> Important: the tool is in an early stage of development; see the "Security and stability" section at the end.
+- окружения (`dev`, `staging`, `ai`, `ai-repair`);
+- слоты (`ai`‑окружения для задач/PR);
+- структуру проекта (инфраструктура, сервисы, Pod Codex‑агента).
+
+> Важно: утилита находится на ранней стадии разработки, см. раздел «Безопасность и стабильность» в конце.
+
+## 🎯 Цель и идеальный DX для AI‑агента
+
+`codexctl` задуман как «кнопка» для облачной ИИ‑разработки и планирования в Kubernetes: по Issue/PR поднимается изолированное
+окружение (namespace/слот) с тем же стеком, что у проекта (сервисы, БД, кэши, очереди, ingress, observability), а агент
+работает *внутри* кластера рядом с этим стеком.
+
+Это даёт практический опыт «как у живого разработчика», но без локальной установки всего окружения:
+
+- агент делает HTTP‑запросы к сервисам в кластере, проверяет поведение и контракты;
+- смотрит логи/события, метрики, статус rollout’ов;
+- подключается к PostgreSQL/Redis/очередям, проверяет миграции и данные;
+- применяет инфраструктуру/сервисы декларативно через `services.yaml` и `codexctl apply/ci apply`.
+
+Рабочий пример (готовые `services.yaml` и GitHub Actions workflow’ы): https://github.com/codex-k8s/project-example
 
 ---
 
-## 📦 Installation
+## 📦 Установка
 
-`codexctl` is distributed as a Go CLI. With a Go toolchain installed you can install it via:
+Требования к локальному Go‑toolchain:
+
+- Go **>= 1.25.1** (см. `go.mod`).
+
+Инструкцию по подготовке VPS/self-hosted runner (microk8s, Docker, kubectl, gh, rsync и т.д.) см. в:
+https://github.com/codex-k8s/project-example/blob/main/README_RU.md
+
+`codexctl` распространяется как Go‑CLI. При установленном Go‑toolchain его можно поставить командой:
 
 ```bash
 go install github.com/codex-k8s/codexctl/cmd/codexctl@latest
 ```
 
-Or a specific version (replace `v0.1.0` with the desired SemVer tag):
+Либо установить конкретную версию (подставив актуальный SemVer‑тег вместо `v999.999.999`):
 
 ```bash
-go install github.com/codex-k8s/codexctl/cmd/codexctl@v0.1.0
+go install github.com/codex-k8s/codexctl/cmd/codexctl@v999.999.999
 ```
 
-You can also browse the Go reference on pkg.go.dev: https://pkg.go.dev/github.com/codex-k8s/codexctl.
+Документация Go‑пакетов доступна на pkg.go.dev: https://pkg.go.dev/github.com/codex-k8s/codexctl.
 
 ---
 
-## 💡 1. Core ideas
+## 🚨 Важно: зависимости от внешних бинарников
 
-### 📦 1.1. Single `services.yaml` for the whole project
+Сейчас `codexctl` **зависит от внешних CLI‑утилит** и запускает их как подпроцессы. Это осознанно упрощает старт и
+интеграцию с существующими практиками (kubectl/gh/git/docker), но требует, чтобы эти бинарники были установлены и доступны
+в `PATH` (как на self-hosted runner, так и в контейнере с Codex).
 
-Instead of scattered Helm charts and bash scripts, you use a single `services.yaml` file that defines:
+Минимально необходимые утилиты:
 
-- which images to use and how to build them (`images`);
-- which infrastructure manifests to apply (`infrastructure`);
-- which services to deploy (`services`);
-- what environments look like (`environments`), namespaces and slots (`namespace`, `state`);
-- how the Codex agent Pod is configured (`codex`).
+- `kubectl` — применение/удаление манифестов, `wait`, диагностика (см. `internal/kube/*`, `hooks: kubectl.wait`);
+- `bash` — выполнение hook‑шагов `run:` (см. `internal/hooks/*`);
+- `docker` — `images mirror/build` (pull/tag/push/build) (см. `internal/cli/images.go`);
+- `git` — commit/push в PR‑флоу (см. `internal/cli/pr.go`);
+- `gh` — чтение/комментирование Issues/PR и GraphQL/REST вызовы (см. `internal/githubapi/*`, `internal/cli/*`).
 
-This file is the single source of truth for `codexctl`, GitHub Actions and dev-AI environments.
+Опционально:
 
-### 🧩 1.2. Templating and context
+- `rsync` — ускоряет синхронизацию исходников (если нет, используется более медленный fallback-копир) (см. `internal/cli/manage_env.go`).
 
-`services.yaml` and all referenced manifests are rendered using Go templates. In templates, you have access to:
+Проверка окружения: используйте `codexctl doctor` (он проверяет наличие `kubectl`, `bash`, `git`, `gh`, а также `docker`
+при наличии блока `images` в `services.yaml`, и предупреждает про отсутствие `rsync`).
 
-- `{{ .Env }}` — current environment (`dev`, `staging`, `ai`, `ai-repair`);
+План на будущее: постепенно заменять часть внешних зависимостей на встроенные реализации (клиенты Kubernetes/GitHub/OCI,
+логика синхронизации и т.п.) через соответствующие SDK/библиотеки, чтобы уменьшить набор обязательных бинарников и сделать
+запуски более предсказуемыми.
+
+Практическую инструкцию по установке необходимых утилит на VPS для runner’а см. в:
+https://github.com/codex-k8s/project-example/blob/main/README_RU.md
+
+---
+
+## 💡 1. Ключевые идеи
+
+### 📦 1.1. Один `services.yaml` на весь проект
+
+Вместо разрозненных Helm‑чартов и bash‑скриптов используется один файл `services.yaml`, в котором описано:
+
+- какие образы использовать и как их собирать (`images`);
+- какие инфраструктурные манифесты применять (`infrastructure`);
+- какие сервисы разворачивать (`services`);
+- как выглядят окружения (`environments`), пространства имён и слоты (`namespace`, `state`);
+- как конфигурируется Pod Codex‑агента (`codex`).
+
+Этот файл служит единым источником правды для `codexctl`, GitHub Actions и AI-dev окружений.
+
+### 🧩 1.2. Шаблонизация и контекст
+
+`services.yaml` и все подключаемые манифесты рендерятся через Go‑шаблоны. В шаблонах доступны:
+
+- `{{ .Env }}` — текущее окружение (`dev`, `staging`, `ai`, `ai-repair`);
 - `{{ .Namespace }}` — Kubernetes namespace;
-- `{{ .Project }}` — project name (`codex-project`);
-- `{{ .Slot }}` — slot number for a dev-AI environment;
-- `{{ .BaseDomain }}` — map of base domains (`dev`, `staging`, `ai`, `ai-repair`);
-- `{{ .Versions }}` — map of service/image versions;
-- helper functions like `envOr`, `default`, `ternary`, `join`, etc.
+- `{{ .Project }}` — имя проекта (`codex-project`);
+- `{{ .Slot }}` — номер слота для AI-dev окружения;
+- `{{ .BaseDomain }}` — карта базовых доменов (`dev`, `staging`, `ai`, `ai-repair`);
+- `{{ .Versions }}` — карта версий сервисов/образов;
+- функции `envOr`, `default`, `ternary`, `join` и т.д.
 
-The same context is used by:
+Этим же контекстом пользуются:
 
-- manifest rendering (`codexctl apply` / `codexctl ci apply`);
-- built-in prompt templates (`internal/prompt/templates/*.tmpl`);
-- the Codex config template (`internal/prompt/templates/config_default.toml` or an overridden one).
+- рендер манифестов (`codexctl apply` / `codexctl ci apply`);
+- встроенные шаблоны промптов (`internal/prompt/templates/*.tmpl`);
+- шаблон конфига Codex (`internal/prompt/templates/config_default.toml` или переопределённый).
 
-### 🌐 1.3. Environments and slots
+### 🌐 1.3. Окружения и слоты
 
-`codexctl` works with the following environment types:
+`codexctl` работает с типами окружений:
 
-- `dev` — local developer environment (a single namespace);
-- `staging` — staging cluster (CI/CD, close to production);
-- `ai` — dev-AI slots: isolated namespaces of the form `<project>-dev-<slot>` (for example, `codex-project-dev-<slot>`),
-  with domains like `dev-<slot>.staging.<domain>` where Codex agents work on issues/PRs.
-- `ai-repair` — a dedicated namespace with a Codex Pod and RBAC access to staging (for repairs).
+- `dev` — локальное окружение разработчика (один namespace);
+- `staging` — стейджинг‑кластер (CI/CD, приближённый к продакшену);
+- `ai` — AI-dev слоты: изолированные namespace’ы вида `<project>-dev-<slot>` (например, `codex-project-dev-<slot>`),
+  с доменами `dev-<slot>.staging.<domain>`, в которых работают Codex‑агенты над задачами/PR.
+- `ai-repair` — отдельный namespace с Pod’ом Codex и RBAC‑доступом к namespace staging (для восстановления).
 
-Slots (`slot`) are numeric identifiers of dev-AI environments managed by `codexctl ci ensure-slot/ensure-ready`. For each
-slot `codexctl` creates and maintains:
+Слоты (`slot`) — это числовые идентификаторы AI-dev окружений, которыми управляет `codexctl ci ensure-slot/ensure-ready`. Для каждого
+слота создаётся и поддерживается:
 
-- a dedicated namespace;
-- a dedicated set of PVCs/data (`.data/slots/<slot>` on the host);
-- a dedicated `codex` Pod with the agent image and your project sources mounted (in the examples — `codex-project`).
-
-### 🧪 1.4. Issue flow and the agent's role
-
-The basic idea is:
-
-- you create an Issue in the repository and add a label to it, for example `[ai-plan]` for planning
-  or `[ai-dev]` for development;
-- a GitHub Actions workflow reacts to this label, calls `codexctl ci ensure-slot/ensure-ready --env ai ...`
-  and deploys a full stack of project infrastructure and services into a separate namespace;
-- in this namespace a `codex` Pod with a Codex agent is started, and `codexctl prompt run` feeds it a prompt
-  of the required type (`kind=plan_issue` or `kind=dev_issue`, languages `ru`/`en`).
-
-The key property of this approach is that the agent works **in a live environment** and "debugs" its changes the same way
-a developer would:
-
-- reads service logs via `kubectl logs`;
-- talks to DBs and caches (via `psql`, `redis-cli` or your own CLI/HTTP/gRPC clients);
-- sends real requests to the project's HTTP/gRPC endpoints;
-- can run tests, migrations, load fixtures, restart deployments.
-
-Each dev-AI environment is isolated (its own namespace and data), so the agent does not interfere with other developers
-and does not touch production services.
+- отдельный namespace;
+- отдельный набор PVC/данных (`.data/slots/<slot>` на хосте);
+- отдельный Pod `codex` с образом агента и смонтированными исходниками вашего проекта (в примерах — `codex-project`).
 
 ---
 
-## 🚀 2. Getting started
+### 🧪 1.4. Флоу по Issue и роль агента
 
-### ✅ 2.1. Requirements
+Базовая задумка такова:
 
-- A Kubernetes cluster (separate from production).
-- Accessible `kubectl` and kubeconfig for the chosen environment.
-- Docker daemon and (recommended) a local image registry.
-- Built `codexctl` binary available in `PATH`.
+- вы создаёте Issue в репозитории и вешаете на него определённый лейбл, например `[ai-plan]` для планирования
+  или `[ai-dev]` для разработки;
+- GitHub Actions‑workflow реагирует на этот лейбл, вызывает `codexctl ci ensure-slot/ensure-ready --env ai ...`
+  и разворачивает в отдельном namespace полный стек инфраструктуры и сервисов проекта;
+- в этом namespace запускается Pod `codex` с Codex‑агентом, которому `codexctl prompt run` подсовывает промпт
+  нужного типа (`kind=plan_issue` или `kind=dev_issue`, языки — `ru`/`en`).
 
-### 📝 2.2. Minimal `services.yaml` for a project
+Главная особенность подхода — агент работает **в живом окружении** и «дебажит» свои изменения так же, как это сделал бы
+разработчик:
 
-A minimal example:
+- читает логи сервисов через `kubectl logs`;
+- ходит в БД и кеши (через `psql`, `redis-cli` или собственные CLI/HTTP/gRPC‑клиенты);
+- выполняет реальные запросы к HTTP/gRPC‑эндпоинтам проекта;
+- может запускать тесты, миграции, загружать фикстуры, перезапускать деплойменты.
 
-```yaml
-project: codex-project
+При этом каждое AI-dev окружение изолировано (свой namespace и данные), поэтому агент не мешает другим разработчикам и
+не трогает сервисы других разработчиков и агентов.
 
-baseDomain:
-  dev: "dev.codex-project.com"
-  staging: "staging.codex-project.com"
-  ai: "staging.codex-project.com"
+### 🏷️ 1.5. Лейблы Issue и как они влияют на инструкции агенту
 
-environments:
-  dev:
-    kubeconfig: "/home/user/.kube/codex-project-dev"
-    imagePullPolicy: IfNotPresent
-  staging:
-    kubeconfig: "/home/runner/.kube/codex-project-staging"
-    imagePullPolicy: Always
-  ai:
-    from: "staging"
-    imagePullPolicy: IfNotPresent
+В этом проекте есть два класса лейблов:
 
-images:
-  app-backend:
-    type: build
-    repository: "registry.local/codex-project/app-backend"
-    dockerfile: "services/app_backend/Dockerfile"
-    context: "services/app_backend"
+1) **Триггер‑лейблы (workflow‑лейблы)** — управляют тем, какой тип агента/сессии будет запущен:
+- `[ai-plan]` — режим планирования (агент готовит план/Issue‑структуру, без PR и коммитов);
+- `[ai-dev]` — режим разработки (агент вносит изменения в код, делает коммиты и открывает PR);
+- `[ai-repair]` — режим восстановления/ремонта окружения (staging/инфраструктура) и PR при необходимости.
 
-infrastructure:
-  - name: base
-    manifests:
-      - path: deploy/namespace.yaml
-      - path: deploy/postgres.yaml
-      - path: deploy/redis.yaml
+> Важно: агент **не должен** сам добавлять триггер‑лейблы `[ai-dev]`, `[ai-plan]`, `[ai-repair]`, если пользователь явно этого не просил.
 
-services:
-  - name: app-backend
-    manifests:
-      - path: services/app_backend/deploy.yaml
-```
+2) **Семантические лейблы задачи** — описывают тип работы и влияют на то, как агент формулирует план/действия.
+Эти лейблы могут быть повешены вместе (несколько одновременно):
+- `feature` — планирование/реализация новой функциональности (включая рефакторинг, новые сервисы и т.п.);
+- `bug` — поиск причины и/или исправление ошибки/неверной логики;
+- `doc` — написание/актуализация документации;
+- `debt` — устранение техдолга (рефакторинг, обновление зависимостей, улучшение качества);
+- `idea` — брейншторм/проработка идеи (несколько вариантов, вопросы, обсуждение в комментариях);
+- `epic` — крупная задача‑эпик, разбитая на подзадачи.
 
-In a real project these blocks will be richer (versions, hooks, overlays), but the basic idea is the same.
+Как это работает в инструкциях агенту:
+- В режимах **планирования** (`[ai-plan]`) агент ориентируется на эти лейблы при структуре плана (feature/bug/doc/debt/idea) и может создавать новые Issues/эпики/подзадачи *только если пользователь просит такой формат*. Для связки дочерних задач используется маркер `AI-PLAN-PARENT: #<root>` в теле Issues.
+- В режимах **разработки** (`[ai-dev]`) агент следует семантике лейблов (feature/bug/doc/debt) при реализации и проверках; при необходимости может создавать дополнительные Issues для найденных побочных задач (например, `bug`/`doc`/`debt`), не мешая основной задаче.
+- В режимах **review результатов планирования** агент отвечает на комментарии пользователя и, если пользователь просит доработать результат, **редактирует существующий результат** (комментарий/Issue body), а не создаёт новый (если не попросили дополнительные варианты).
 
-### 🔁 2.3. Basic deployment loop
+## 🚀 2. Быстрый старт
 
-For any environment (`dev`, `staging`, `ai`) the deployment loop is the same:
+### ✅ 2.1. Требования
 
-```bash
-ENV=staging   # or dev/ai
+- Kubernetes‑кластер (отдельный от продакшена).
+- Доступный `kubectl` и kubeconfig для выбранного окружения.
+- Docker‑демон и (рекомендуемо) локальный реестр образов.
+- Собранный бинарь `codexctl` в `PATH`.
 
-codexctl images mirror --env "$ENV"    # if needed
-codexctl images build  --env "$ENV"    # build and push images with images.type=build
-codexctl apply        --env "$ENV" --wait --preflight
-```
+### 📝 2.2. Минимальный `services.yaml` для проекта
 
-When running via GitHub Actions this loop is embedded into the workflow — see the integration section.
-
----
-
-## 📑 3. `services.yaml` format
-
-`services.yaml` is the "manifest of manifests" for your project. Below is an overview of the key blocks.
-
-### 🌱 3.1. Root fields
-
-- `project` — project code, used in namespaces and other templates.
-- `envFiles` — list of `.env` files with environment variables included during rendering.
-- `registry` — base registry address (for example, `registry.local:32000`).
-- `versions` — a dictionary of versions (arbitrary keys used in templates).
-
-### 🤖 3.2. `codex` block
-
-Configuration of the Codex agent integration:
-
-- `codex.configTemplate` — path to the Codex config template (for example, `deploy/codex/config.toml`). If omitted,
-  the built-in `internal/prompt/templates/config_default.toml` is used.
-- `codex.links` — list of links (title + path) rendered in environment comments (for example, Swagger, Admin).
-- `codex.extraTools` — list of additional CLI tools available in the agent image and useful in prompts
-  (for example, `psql`, `redis-cli`, `k6`).
-- `codex.projectContext` — free-form text with project specifics (where to find docs, how to run tests, etc.);
-  injected into prompts (see built-in templates).
-- `codex.servicesOverview` — overview of infrastructure/application services and their URLs/ports; also included in prompts.
-- `codex.timeouts.exec`/`codex.timeouts.rollout` — timeouts for `prompt run` and waiting for rollouts.
-
-These fields are used when rendering built-in prompts (`dev_issue_*`, `plan_issue_*`, `plan_review_*`,
-`dev_review_*`, `ai-repair_*`) and the Codex config:
-
-- `internal/prompt/templates/*.tmpl` — prompt templates;
-- `internal/prompt/templates/config_default.toml` — default Codex config.
-
-You can override:
-
-- the Codex config via `codex.configTemplate`;
-- the prompts themselves — by passing your own `--template` to `codexctl prompt ...` or replacing the built-in `.tmpl`
-  files in the agent image.
-
-### 🌐 3.3. `baseDomain` and `namespace`
+Простейший пример (в актуальном формате; см. также `services.yaml` в репозитории https://github.com/codex-k8s/project-example):
 
 ```yaml
+# {{- $codeRootBase := envOr "CODE_ROOT_BASE" "" -}}
+# {{- $slotCodeRoot := default $codeRootBase (printf "%s/slots" .ProjectRoot) -}}
+# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/staging/src" $codeRootBase) "") .ProjectRoot -}}
+# {{- $dataRoot := default (envOr "DATA_ROOT" "") (printf "%s/.data" .ProjectRoot) -}}
+
+project: project-example
+
+codex:
+  promptLang: "ru"
+  extraTools: [psql, redis-cli]
+  links:
+    - title: Chat frontend
+      path: /
+    - title: Django admin
+      path: /admin/
+  projectContext: |
+    - Перед началом работы прочитай ./AGENTS.md и релевантную документацию в docs/*.md.
+    - Для работы с манифестами используй `codexctl render` и `codexctl apply` только с фильтрами `--only-services/--only-infra` (или `--skip-*`).
+  servicesOverview: |
+    - Django backend: админка и миграции БД PostgreSQL.
+    - Go chat backend: HTTP API чата, авторизация, работа с PostgreSQL и Redis.
+    - Web frontend: SPA‑интерфейс чата.
+  timeouts:
+    exec: "60m"
+    rollout: "30m"
+
 baseDomain:
-  dev: "dev.codex-project.local"
-  staging: "staging.codex-project.local"
-  ai: "staging.codex-project.local"
+  dev: '{{ envOr "BASE_DOMAIN_DEV" "dev.example-domain.ru" }}'
+  staging: '{{ envOr "BASE_DOMAIN_STAGING" "staging.example-domain.ru" }}'
+  ai: '{{ envOr "BASE_DOMAIN_AI" (envOr "BASE_DOMAIN_STAGING" "staging.example-domain.ru") }}'
+  ai-repair: '{{ envOr "BASE_DOMAIN_STAGING" "staging.example-domain.ru" }}'
 
 namespace:
   patterns:
     dev: "{{ .Project }}-dev"
     staging: "{{ .Project }}-staging"
     ai: "{{ .Project }}-dev-{{ .Slot }}"
-```
+    ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
 
-- `baseDomain` — ingress domains per environment.
-- `namespace.patterns` — namespace templates; for `ai` the default is `project-dev-<slot>`.
+registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 
-### 🗺️ 3.4. `environments`
+dataPaths:
+  root: '{{ $dataRoot }}'
+  envDir: '{{ ternary (eq .Env "ai") (printf "%s/slots/%d" $dataRoot .Slot) (printf "%s/%s" $dataRoot .Env) }}'
+  dirs: [postgres, redis]
 
-Cluster connection settings:
+state:
+  backend: configmap
+  configmapNamespace: codex-system
+  configmapPrefix: codex-env-
 
-```yaml
 environments:
   dev:
-    kubeconfig: "/home/user/.kube/codex-project-dev"
+    kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
-    localRegistry:
-      enabled: true
-      name: "codex-project-registry"
-      port: 32000
   staging:
-    kubeconfig: "/home/runner/.kube/codex-project-staging"
+    kubeconfig: "/home/runner/.kube/microk8s.config"
     imagePullPolicy: Always
   ai:
     from: "staging"
     imagePullPolicy: IfNotPresent
+  ai-repair:
+    from: "staging"
+    imagePullPolicy: IfNotPresent
+
+images:
+  postgres:
+    type: external
+    from: "docker.io/library/postgres:16-bookworm"
+    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/postgres:16-bookworm'
+  # build‑образы сервисов описываются аналогично (dockerfile/context/buildArgs/tagTemplate)
+
+infrastructure:
+  - name: namespace-and-config
+    when: '{{ or (eq .Env "dev") (eq .Env "staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
+    manifests:
+      - path: deploy/namespace.yaml
+      - path: deploy/configmap.yaml
+      - path: deploy/secret.yaml
+
+services:
+  - name: chat-backend
+    manifests:
+      - path: services/chat_backend/deploy.yaml
+    overlays:
+      ai:
+        hostMounts:
+          - name: go-src
+            hostPath: '{{ printf "%s/%d/src/services/chat_backend" $slotCodeRoot .Slot }}'
+            mountPath: "/app"
+        dropKinds: ["Ingress"]
 ```
 
-- `from` lets you inherit settings (for example, `ai` from `staging`).
-- `localRegistry` describes a local registry where images are pushed by `images build`.
+В реальном проекте блоки будут богаче (версии, hooks, overlays), но базовый принцип тот же.
+
+### 🔁 2.3. Базовый цикл деплоя
+
+Для любого окружения (`dev`, `staging`, `ai`, `ai-repair`) цикл один и тот же:
+
+```bash
+ENV=staging   # или dev/ai
+
+codexctl images mirror --env "$ENV"    # при необходимости
+codexctl images build  --env "$ENV"    # сборка и пуш образов из images.type=build
+
+# Рекомендуется применять только через фильтры (и отдельно infra/services).
+codexctl apply --env "$ENV" --only-infra namespace-and-config,data-services,observability,cluster-dns,tls-issuer,echo-probe --wait --preflight
+codexctl apply --env "$ENV" --only-services django-backend,chat-backend,web-frontend --wait
+```
+
+Имена групп инфраструктуры и сервисов берутся из `services.yaml` вашего проекта; в примерах используются значения из `project-example`.
+
+При работе через GitHub Actions этот цикл зашит в workflow — см. раздел про интеграцию.
+
+---
+
+## 📑 3. Формат services.yaml
+
+`services.yaml` — это «manifest of manifests» для вашего проекта. Ниже — обзор ключевых блоков.
+
+### 🌱 3.1. Корневые поля
+
+- `project` — код проекта, используется в namespace’ах и других шаблонах.
+- `envFiles` — список `.env`‑файлов с переменными окружения, которые подключаются при рендере.
+- `registry` — базовый адрес реестра (например, `localhost:32000`).
+- `versions` — словарь версий (произвольные ключи, используются в шаблонах).
+
+### 🤖 3.2. Блок `codex`
+
+Конфигурация интеграции с Codex‑агентом:
+
+- `codex.configTemplate` — путь до шаблона конфига Codex (например, `deploy/codex/config.toml`). Если не указан,
+  используется встроенный `internal/prompt/templates/config_default.toml`.
+- `codex.links` — список ссылок (title + path), которые будут рендериться в комментариях к окружению (например, Swagger, Admin).
+- `codex.extraTools` — список дополнительных CLI/утилит, доступных в образе агента и полезных для промптов
+  (например, `psql`, `redis-cli`, `k6`).
+- `codex.projectContext` — свободный текст с особенностями проекта (куда смотреть документацию, как запускать тесты и т.п.);
+  вставляется в промпты (см. встроенные шаблоны).
+- `codex.servicesOverview` — обзор инфраструктурных/прикладных сервисов и их URL/порты; также попадает в промпты.
+- `codex.timeouts.exec`/`codex.timeouts.rollout` — таймауты для `prompt run` и ожидания rollout’ов.
+
+Эти поля используются при рендере встроенных промптов (`dev_issue_*`, `plan_issue_*`, `plan_review_*`,
+`dev_review_*`, `ai-repair_*`) и конфига Codex:
+
+- `internal/prompt/templates/*.tmpl` — шаблоны промптов;
+- `internal/prompt/templates/config_default.toml` — дефолтный конфиг Codex.
+
+Вы можете переопределить:
+
+- конфиг Codex через `codex.configTemplate`;
+- сами промпты — указав свой `--template` для `codexctl prompt ...` или подменив встроенные `.tmpl` в образе.
+
+### 🌐 3.3. `baseDomain` и `namespace`
+
+```yaml
+baseDomain:
+  dev: "dev.codex-project.local"
+  staging: "staging.codex-project.local"
+  ai: "staging.codex-project.local"
+  ai-repair: "staging.codex-project.local"
+
+namespace:
+  patterns:
+    dev: "{{ .Project }}-dev"
+    staging: "{{ .Project }}-staging"
+    ai: "{{ .Project }}-dev-{{ .Slot }}"
+    ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
+```
+
+- `baseDomain` — домены для ingress’ов по окружениям.
+- `namespace.patterns` — шаблоны namespace’ов; для `ai` по умолчанию используется `project-dev-<slot>`.
+
+### 🗺️ 3.4. `environments`
+
+Описание подключения к кластерам:
+
+```yaml
+environments:
+  dev:
+    kubeconfig: "/home/user/.kube/project-example-dev"
+    imagePullPolicy: IfNotPresent
+    localRegistry:
+      enabled: true
+      name: "project-example-registry"
+      port: 32000
+  staging:
+    kubeconfig: "/home/runner/.kube/microk8s.config"
+    imagePullPolicy: Always
+    localRegistry:
+      enabled: true
+      name: "project-example-registry"
+      port: 32000
+  ai:
+    from: "staging"
+    imagePullPolicy: IfNotPresent
+  ai-repair:
+    from: "staging"
+    imagePullPolicy: IfNotPresent
+```
+
+- `from` позволяет наследовать настройки (например, `ai` от `staging`).
+- `localRegistry` описывает локальный реестр, в который будут пушиться образы при `images build`.
 
 ### 🖼️ 3.5. `images`
 
-Describes external and built images:
+Описывает внешние и собираемые образы:
 
 ```yaml
 images:
   busybox:
     type: external
-    from: "docker.io/library/busybox:1.37.0"
-    local: "{{ envOr \"REGISTRY_HOST\" \"registry.local:32000\" }}/library/busybox:1.37.0"
+    from: 'docker.io/library/busybox:{{ index .Versions "busybox" }}'
+    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/busybox:{{ index .Versions "busybox" }}'
 
-  app-backend:
+  chat-backend:
     type: build
-    repository: "{{ envOr \"REGISTRY_HOST\" \"registry.local:32000\" }}/codex-project/app-backend"
-    dockerfile: "services/app_backend/Dockerfile"
-    context: "services/app_backend"
+    repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/project-example/chat-backend'
+    tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
+    dockerfile: 'services/chat_backend/Dockerfile'
+    context: 'services/chat_backend'
     buildArgs:
-      SERVICE_VERSION: "{{ index .Versions \"app-backend\" }}"
+      GOLANG_IMAGE_VERSION: '{{ index .Versions "golang" }}'
+      SERVICE_VERSION: '{{ index .Versions "chat-backend" }}'
 ```
 
-- `type: external` — images mirrored by `images mirror`;
-- `type: build` — images built and pushed by `images build`.
+- `type: external` — образы, которые зеркалируются командой `images mirror`;
+- `type: build` — образы, которые собираются и пушатся командой `images build`.
 
 ### 🏗️ 3.6. `infrastructure`
 
-List of infrastructure "packages":
+Список инфраструктурных сервисов:
 
 ```yaml
 infrastructure:
-  - name: base
+  - name: namespace-and-config
+    when: '{{ or (eq .Env "dev") (eq .Env "staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
     manifests:
       - path: deploy/namespace.yaml
-      - path: deploy/postgres.yaml
-      - path: deploy/redis.yaml
+      - path: deploy/configmap.yaml
+      - path: deploy/secret.yaml
+
+  - name: data-services
+    when: '{{ or (eq .Env "dev") (eq .Env "staging") (eq .Env "ai") }}'
+    manifests:
+      - path: deploy/postgres.service.yaml
+      - path: deploy/redis.service.yaml
     hooks:
       afterApply:
         - name: wait-postgres
@@ -311,79 +467,97 @@ infrastructure:
             timeout: "1200s"
 ```
 
-Each item:
+Каждый элемент:
 
-- describes a set of YAML files (with templates);
-- may contain `hooks.beforeApply/afterApply/afterDestroy` with `kubectl` calls or shell scripts.
+- описывает набор YAML‑файлов (с шаблонами);
+- может содержать `hooks.beforeApply/afterApply/afterDestroy` с вызовами `kubectl` или shell‑скриптов.
 
 ### 🧱 3.7. `services`
 
-List of applications:
+Список приложений:
 
 ```yaml
+# {{- $codeRootBase := envOr "CODE_ROOT_BASE" "" -}}
+# {{- $slotCodeRoot := default $codeRootBase (printf "%s/slots" .ProjectRoot) -}}
+# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/staging/src" $codeRootBase) "") .ProjectRoot -}}
+
 services:
-  - name: app-backend
+  - name: chat-backend
     manifests:
-      - path: services/app_backend/deploy.yaml
+      - path: services/chat_backend/deploy.yaml
     image:
-      repository: "{{ envOr \"REGISTRY_HOST\" \"registry.local:32000\" }}/codex-project/app-backend"
-      tagTemplate: "{{ printf \"%s-%s\" .Env (index .Versions \"app-backend\") }}"
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/project-example/chat-backend'
+      tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
     overlays:
       dev:
         hostMounts:
           - name: go-src
-            hostPath: "{{ .ProjectRoot }}/services/app_backend"
+            hostPath: "{{ .ProjectRoot }}/services/chat_backend"
+            mountPath: "/app"
+      staging:
+        hostMounts:
+          - name: go-src
+            hostPath: '{{ printf "%s/services/chat_backend" $stagingCodeRoot }}'
             mountPath: "/app"
       ai:
         hostMounts:
           - name: go-src
-            hostPath: "{{ printf \"%s/%d/src/services/app_backend\" (envOr \"CODE_ROOT_BASE\" \"/srv/repo\") .Slot }}"
+            hostPath: '{{ printf "%s/%d/src/services/chat_backend" $slotCodeRoot .Slot }}'
             mountPath: "/app"
         dropKinds: ["Ingress"]
 ```
 
-- `manifests` — list of YAML files for the service;
-- `image` — image override in manifests (repository/tag);
-- `overlays` — environment-specific settings (hostPath mounts for sources, disabling ingress in dev-AI, etc.);
-- `hostMounts` — list of host directories to mount (local sources for dev/dev-AI).
-  Optional: `hostPathType` (defaults to `Directory`). Use `Socket` for mounts like `/var/run/docker.sock`.
-- `dropKinds` — list of Kubernetes resource kinds to drop from rendering (e.g., Ingress in dev-AI).
+- `manifests` — список YAML‑файлов для сервиса;
+- `image` — переопределение `image:` в манифестах (репозиторий/тэг);
+- `overlays` — настройки по окружениям (hostPath‑монтаж исходников, отключение ingress в AI-dev и т.п.).
+- `hostMounts` — список монтируемых директорий с хоста (локальные исходники для dev/AI-dev).
+  Опционально: `hostPathType` (по умолчанию `Directory`). Для `/var/run/docker.sock` используйте `Socket`.
+- `dropKinds` — список Kubernetes‑ресурсов (по kind), которые нужно выкинуть из рендера (например, Ingress в AI-dev).
 
 ---
 
-## 🛠️ 4. Applying manifests
+## 🛠️ 4. Применение манифестов
 
 ### ☸️ 4.1. `codexctl apply`
 
 ```bash
-codexctl apply \
-  --env staging \
-  --slot 0 \
-  --wait \
-  --preflight
+# staging (пример для project-example)
+codexctl apply --env staging \
+  --only-infra namespace-and-config,data-services,observability,cluster-dns,tls-issuer,echo-probe \
+  --wait --preflight
+
+codexctl apply --env staging \
+  --only-services django-backend,chat-backend,web-frontend \
+  --wait
+
+# AI-dev слот
+codexctl apply --env ai --slot 123 \
+  --only-services chat-backend \
+  --wait --preflight
 ```
 
-This command:
+Команда:
 
-- renders the stack;
-- runs preflight checks (if the `--preflight` flag is set);
-- applies manifests via `kubectl apply`;
-- runs `afterApply` hooks (for example, waiting for rollouts);
-- with `--wait` waits for deployments to become ready.
+- рендерит стэк;
+- выполняет preflight‑проверки (если включены флагом `--preflight`);
+- применяет манифесты через `kubectl apply`;
+- выполняет хуки `afterApply` (например, ожидание rollout’ов);
+- при `--wait` дожидается готовности деплойментов.
 
-Filtering flags (safe apply):
+Фильтры для безопасного применения:
 
-- `--only-services name1,name2` — apply only selected services.
-- `--skip-services name1,name2` — skip selected services.
-- `--only-infra name1,name2` — apply only selected infra blocks.
-- `--skip-infra name1,name2` — skip selected infra blocks.
+- `--only-services name1,name2` — применить только выбранные сервисы;
+- `--skip-services name1,name2` — пропустить выбранные сервисы;
+- `--only-infra name1,name2` — применить только выбранные группы инфраструктуры;
+- `--skip-infra name1,name2` — пропустить выбранные группы инфраструктуры.
 
-When running inside the Codex Pod, always use filters (for example `--only-services`
-or `--only-infra`) and avoid applying the `codex` service itself.
+При запуске внутри Pod’а Codex всегда используйте фильтры и не применяйте сервис `codex`.
+Дополнительно (часто важно именно внутри Pod’а Codex): используйте `--skip-infra tls-issuer,echo-probe`, чтобы не упираться
+в cluster-scope ресурсы и проверки локальных портов (см. встроенные промпты `*_issue_*.tmpl`).
 
 ### 🧩 4.2. `codexctl render`
 
-Render manifests without applying them:
+Рендер манифестов без применения:
 
 ```bash
 codexctl render \
@@ -393,55 +567,55 @@ codexctl render \
 
 ---
 
-## ⌨️ 5. `codexctl` commands: overview
+## ⌨️ 5. Команды codexctl: обзор
 
-### ⚙️ 5.1. Global flags
+### ⚙️ 5.1. Глобальные флаги
 
-- `--config, -c` — path to `services.yaml` (defaults to `services.yaml` in the current directory).
-- `--env` — environment name (`dev`, `staging`, `ai`).
-- `--namespace` — explicit namespace override (usually not needed).
-- `--log-level` — log level (`debug`, `info`, `warn`, `error`).
+- `--config, -c` — путь к `services.yaml` (по умолчанию `services.yaml` в текущем каталоге).
+- `--env` — имя окружения (`dev`, `staging`, `ai`, `ai-repair`).
+- `--namespace` — явный override namespace (обычно не нужен).
+- `--log-level` — уровень логов (`debug`, `info`, `warn`, `error`).
 
 ### ☸️ 5.2. `apply`
 
-- Purpose: render and apply the stack to Kubernetes.
-- Typical example — see section 4.1.
+- Назначение: отрендерить и применить стэк в Kubernetes.
+- Типичный пример — см. раздел 4.1.
 
 ### 🧩 5.3. `render`
 
-- Purpose: render manifests to stdout without applying them.
-- Useful in CI or inside Codex pods to inspect what would be applied.
+- Назначение: отрендерить манифесты в stdout без применения.
+- Удобно использовать в CI или внутри Pod’а Codex для проверки результата.
 
 ### 🧪 5.4. `ci`
 
-Helpers for CI workflows and slot provisioning.
+Набор команд для CI‑сценариев и подготовки слотов.
 
-Subcommands:
+Подкоманды:
 
-- `ci images` — mirrors external images and/or builds local ones for CI.
-  Flags: `--mirror/--build` (both default to `true`), `--slot`, `--vars`, `--var-file`.
-- `ci apply` — apply manifests with retries and optional wait.
-  Flags: `--preflight`, `--wait`, `--apply-retries`, `--wait-retries`, `--apply-backoff`,
-  `--wait-backoff`, `--wait-timeout`, `--request-timeout`, and render filters
+- `ci images` — зеркалирует внешние образы и/или собирает локальные для CI.
+  Флаги: `--mirror/--build` (оба `true` по умолчанию), `--slot`, `--vars`, `--var-file`.
+- `ci apply` — применяет манифесты с ретраями и опциональным ожиданием.
+  Флаги: `--preflight`, `--wait`, `--apply-retries`, `--wait-retries`, `--apply-backoff`,
+  `--wait-backoff`, `--wait-timeout`, `--request-timeout`, а также фильтры рендера
   (`--only-services/--skip-services/--only-infra/--skip-infra`).
-- `ci ensure-slot` — allocate or reuse a slot by `--issue/--pr/--slot` selector (one is required).
-  Output: `plain|json|kv`.
-- `ci ensure-ready` — ensure a slot exists and optionally sync sources, prepare images, and apply manifests.
-  Flags: `--code-root-base`, `--source`, `--prepare-images`, `--apply`, `--force-apply`,
-  `--wait-timeout`, `--wait-soft-fail`, output `plain|json|kv`.
-  When `--code-root-base` and `--source` are set, sources are synced to `<code-root-base>/<slot>/src`.
+- `ci ensure-slot` — выделяет/повторно использует слот по селектору `--issue/--pr/--slot` (один обязателен).
+  Вывод: `plain|json|kv`.
+- `ci ensure-ready` — гарантирует слот и при необходимости синхронизирует исходники, готовит образы и применяет манифесты.
+  Флаги: `--code-root-base`, `--source`, `--prepare-images`, `--apply`, `--force-apply`,
+  `--wait-timeout`, `--wait-soft-fail`, вывод `plain|json|kv`.
+  При `--code-root-base` и `--source` исходники синхронизируются в `<code-root-base>/<slot>/src`.
 
 ### 🖼️ 5.5. `images`
 
-Subcommands:
+Подкоманды:
 
-- `images mirror` — mirrors `images.type=external` into a local registry:
+- `images mirror` — зеркалирует `images.type=external` в локальный реестр:
 
   ```bash
   codexctl images mirror --env staging
   ```
 
-- `images build` — builds and pushes `images.type=build`:
+- `images build` — собирает и пушит `images.type=build`:
 
   ```bash
   codexctl images build --env staging
@@ -449,23 +623,23 @@ Subcommands:
 
 ### 🎛️ 5.6. `manage-env`
 
-Command group for dev-AI slot metadata and cleanup (`env=ai`):
+Группа команд для метаданных и очистки AI-dev слотов (`env=ai`):
 
-- `manage-env cleanup` — delete a slot environment and its state records.
-- `manage-env set` — set slot ↔ issue/PR mappings.
-- `manage-env comment` — render environment links for PR/Issue comments.
+- `manage-env cleanup` — удаляет окружение слота и записи состояния.
+- `manage-env set` — проставить связи slot ↔ issue/PR.
+- `manage-env comment` — рендерить ссылки на окружение для комментариев.
 
-Notes:
+Примечания:
 
-- `manage-env cleanup` supports `--all` (cleanup all matching slots) and `--with-configmap`
-  (remove state ConfigMap for the selected environments).
-- `manage-env comment` accepts `--lang en|ru` for the rendered message.
+- `manage-env cleanup` поддерживает `--all` (очистить все подходящие слоты) и `--with-configmap`
+  (удалить state‑ConfigMap у выбранных окружений).
+- `manage-env comment` принимает `--lang en|ru` для языка комментария.
 
 ### 🧠 5.7. `prompt`
 
-Commands for working with Codex agent prompts:
+Команды работы с промптами Codex‑агента:
 
-- `prompt run` — run a Codex agent in the `codex` Pod:
+- `prompt run` — запуск Codex‑агента в Pod’е `codex`:
 
   ```bash
   codexctl prompt run \
@@ -475,19 +649,19 @@ Commands for working with Codex agent prompts:
     --lang ru
   ```
 
-  This uses built-in prompt templates (`internal/prompt/templates/dev_issue_*.tmpl`) and the `services.yaml` context
+  Использует встроенные шаблоны промптов (`internal/prompt/templates/dev_issue_*.tmpl`) и контекст `services.yaml`
   (`codex.extraTools`, `codex.projectContext`, `codex.servicesOverview`, `codex.links`).
 
-Notes:
+Примечания:
 
-- `prompt run` supports `--issue`/`--pr` context, `--resume`, `--infra-unhealthy`, `--vars`, `--var-file`.
-- `--template` overrides `--kind`; when `--kind` is not set it defaults to `dev_issue`.
+- `prompt run` поддерживает контекст `--issue`/`--pr`, режим `--resume`, флаг `--infra-unhealthy`, а также `--vars`, `--var-file`.
+- `--template` переопределяет `--kind`; если `--kind` не задан, по умолчанию используется `dev_issue`.
 
 ### 🧭 5.8. `plan`
 
-Commands for working with plans and related task structures:
+Команды для работы с планами и структурой связанных задач:
 
-- `plan resolve-root` — find the "root" planning Issue for a specific task:
+- `plan resolve-root` — найти «родительский» планирующий Issue для конкретной задачи:
 
   ```bash
   codexctl plan resolve-root \
@@ -496,17 +670,17 @@ Commands for working with plans and related task structures:
     --output json
   ```
 
-  This command uses:
-  - the `[ai-plan]` label on the root planning Issue;
-  - the `AI-PLAN-PARENT: #<root>` marker in child Issues.
+  Команда использует:
+  - лейбл `[ai-plan]` на корневом планирующем Issue;
+  - маркер `AI-PLAN-PARENT: #<root>` в теле дочерних Issue.
 
-This mechanism lets you build a tree of tasks: one planning Issue with `[ai-plan]` describes the architecture and phases,
-and child Issues with `AI-PLAN-PARENT: #<root>` are implemented in separate dev-AI slots (`[ai-dev]`) via `ci ensure-ready`
-and `prompt run`.
+Такой механизм позволяет строить древовидную структуру задач: один планирующий Issue с `[ai-plan]` описывает
+архитектуру и этапы, а дочерние Issue с `AI-PLAN-PARENT: #<root>` реализуются отдельными AI-dev слотами (`[ai-dev]`)
+через `ci ensure-ready` и `prompt run`.
 
 ### 🔄 5.9. `pr review-apply`
 
-- Automatically applies changes made by a Codex agent in a dev-AI environment to a PR:
+- Автоматически применяет изменения, сделанные Codex‑агентом в AI-dev окружении, к PR:
 
   ```bash
   codexctl pr review-apply \
@@ -517,158 +691,776 @@ and `prompt run`.
     --lang ru
   ```
 
-- The command:
-  - runs `git add/commit/push` to the PR branch;
-  - leaves a comment in the PR with links to the environment.
+- Команда:
+  - делает `git add/commit/push` в ветку PR;
+  - оставляет комментарий в PR со ссылками на окружение.
 
 ---
 
-## 🌍 6. Environment variables
+## 🌍 6. Переменные окружения
 
-`codexctl` uses a merged map of variables:
+`codexctl` использует объединённую карту переменных:
 
-- process environment variables (`os.Environ()`);
-- variables from `envFiles` in `services.yaml`;
-- variables from `--var-file` and `--vars`.
+- переменные процесса (`os.Environ()`);
+- переменные из `envFiles` в `services.yaml`;
+- переменные из `--var-file` и `--vars`.
 
-Through the `envOr` function these variables are available in templates:
+Через функцию `envOr` эти переменные доступны в шаблонах:
 
 ```yaml
-registry: "{{ envOr \"REGISTRY_HOST\" \"registry.local:32000\" }}"
+registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
 ```
 
-Commonly used variables:
+Часто используемые переменные:
 
-- `KUBECONFIG` — path to kubeconfig if not set in `environments.*.kubeconfig`;
-- `REGISTRY_HOST` — image registry address;
-- `CODE_ROOT_BASE` — base path for slot working directories (used in `services.*.overlays.ai.hostMounts`);
-- `DATA_ROOT` — base path to `.data` with Postgres/Redis/cache data.
+- `KUBECONFIG` — путь до kubeconfig, если не задан в `environments.*.kubeconfig`;
+- `REGISTRY_HOST` — адрес реестра образов;
+- `CODE_ROOT_BASE` — базовый путь до каталогов с исходниками (на ноде/в CI), используется для вычисления путей:
+  - `slotCodeRoot` (например, `.../slots/<slot>/src/...`) и
+  - `stagingCodeRoot` (например, `.../staging/src/...`),
+  которые затем применяются в `services.*.overlays.*.hostMounts` (см. заголовок‑комментарии в `services.yaml`).
+- `DATA_ROOT` — базовый путь до `.data` с данными Postgres/Redis/кеша/и т.д. (используется в `dataPaths.root` и `dataPaths.envDir`). Очищается при `manage-env cleanup --with-configmap` (в AI-dev).
 
-In GitHub Actions you usually set:
+В GitHub Actions обычно задаются:
 
-- `GITHUB_RUN_ID`, `GITHUB_REPOSITORY`, `DEV_SLOTS_MAX` — to link slots and CI runs;
-- secrets for DB/Redis/cache and other external services;
-- `CODEX_GH_PAT`, `CODEX_GH_USERNAME` — token and username for the GitHub bot;
-- `CONTEXT7_API_KEY` — API key for Context7 (if used);
-- `OPENAI_API_KEY` — OpenAI API key.
+- `GITHUB_RUN_ID`, `GITHUB_REPOSITORY`, `DEV_SLOTS_MAX` — для связи слотов и CI‑запусков;
+- секреты подключения к БД/Redis/кешам и другим внешним сервисам;
+- `CODEX_GH_PAT`, `CODEX_GH_USERNAME` — токен и имя пользователя для GitHub‑бота.
+- `CONTEXT7_API_KEY` — API‑ключ для Context7 (если используется).
+- `OPENAI_API_KEY` — API‑ключ OpenAI.
 
 ---
 
-## 🔐 7. GitHub Actions integration and secrets
+## 🔐 7. Интеграция с GitHub Actions и секреты
 
-### 🚀 7.1. Minimal workflow for staging
+Ниже — примеры workflow’ов, которые используются в проекте‑примере (смотри также
+в репозитории project-example: `.github/workflows/*.yml`). Предполагается self-hosted runner, где уже установлены:
+`codexctl`, `kubectl`, `gh`, `rsync`, `docker`.
+
+### 🚀 7.1. Deploy staging (push в `main`)
 
 ```yaml
-name: "Staging deploy"
+name: "Staging deploy  🚀"
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    name: "Deploy staging via codexctl 🚀"
+    if: >
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !contains(github.event.head_commit.message, '[skip-ci]') &&
+      !contains(github.event.head_commit.message, '[no ci]') &&
+      !contains(github.event.head_commit.message, '[no-ci]')
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - name: "Checkout project-example 📥"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - name: "Sync staging sources 📂"
+        env:
+          CODE_ROOT_BASE: ${{ vars.CODE_ROOT_BASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODE_ROOT_BASE:-}" ]; then
+            echo "error: CODE_ROOT_BASE is not set" >&2
+            exit 1
+          fi
+          STAGING_SRC="${CODE_ROOT_BASE}/staging/src"
+          mkdir -p "${STAGING_SRC}"
+          rsync -a --delete \
+            --exclude '.cache' \
+            ./ "${STAGING_SRC}/"
+
+      - name: "Prepare images via codexctl 🪞🏗️"
+        env:
+          REGISTRY_HOST: localhost:32000
+        run: |
+          set -euo pipefail
+          codexctl ci images --env staging --mirror --build
+
+      - name: "Apply staging via codexctl 🚀"
+        env:
+          KUBECONFIG:           /home/runner/.kube/microk8s.config
+          NO_PROXY:             127.0.0.1,localhost,::1
+          GITHUB_RUN_ID:        ${{ github.run_id }}
+          CODEX_GH_PAT:         ${{ secrets.CODEX_GH_PAT }}
+          CODEX_GH_USERNAME:    ${{ vars.CODEX_GH_USERNAME }}
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
+          CODE_ROOT_BASE:       ${{ vars.CODE_ROOT_BASE }}
+          DATA_ROOT:            ${{ vars.DATA_ROOT }}
+          POSTGRES_USER:        ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD:       ${{ secrets.REDIS_PASSWORD }}
+          SECRET_KEY:           ${{ secrets.SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          codexctl ci apply --env staging --preflight --wait
+
+  gc-registry:
+    needs: deploy
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - name: "Checkout 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - name: "GC docker registry container 🗑️"
+        run: |
+          set -euo pipefail
+          NAME="${DOCKER_REGISTRY_CONTAINER:-project-example-registry}"
+          if ! docker ps --format '{{.Names}}' | grep -q "^${NAME}$"; then
+            echo "info: registry container ${NAME} not running" >&2
+            exit 0
+          fi
+          echo "info: running registry GC inside ${NAME} (--delete-untagged=true)" >&2
+          set +e
+          docker exec "${NAME}" registry garbage-collect /etc/docker/registry/config.yml --delete-untagged=true
+          RC=$?
+          set -e
+          if [[ $RC -ne 0 ]]; then
+            echo "warn: GC with --delete-untagged failed; retrying without flag" >&2
+            docker exec "${NAME}" registry garbage-collect /etc/docker/registry/config.yml || true
+          fi
+          echo "info: GC finished" >&2
+        shell: bash
+```
+
+### 🧭 7.2. AI Plan (планирование по Issue: лейбл `[ai-plan]`)
+
+Ключевые идеи:
+
+- workflow триггерится только для `[ai-plan]` и только для акторов из `AI_ALLOWED_USERS`;
+- создаёт/находит слот по Issue и поднимает AI-dev окружение через `ci ensure-ready`;
+- запускает агента планирования `prompt run --kind plan_issue`;
+- на сбое чистит слот через `manage-env cleanup`.
+
+```yaml
+name: "AI Plan 🧭"
+
+on:
+  issues:
+    types: [labeled]
+
+env:
+  AI_ALLOWED_USERS: ${{ vars.AI_ALLOWED_USERS }}
+  CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+
+concurrency:
+  group: ai-plan-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  create-ai-plan:
+    if: >-
+      github.event.label.name == '[ai-plan]' &&
+      contains(format(',{0},', vars.AI_ALLOWED_USERS), format(',{0},', github.actor))
+    runs-on: self-hosted
+    environment: staging
+    outputs:
+      slot: ${{ steps.alloc.outputs.slot }}
+      namespace: ${{ steps.alloc.outputs.namespace }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+      - id: alloc
+        env:
+          GITHUB_RUN_ID:     ${{ github.run_id }}
+          CODEX_GH_PAT:      ${{ secrets.CODEX_GH_PAT }}
+          CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+        run: |
+          set -euo pipefail
+          ENV_NAME="ai"
+          ISSUE="${{ github.event.issue.number }}"
+          MAX="${{ vars.DEV_SLOTS_MAX }}"
+          ARGS=(ci ensure-slot --env "${ENV_NAME}" --issue "${ISSUE}" --output kv)
+          if [ -n "$MAX" ]; then ARGS+=(--max "$MAX"); fi
+          OUT="$(codexctl "${ARGS[@]}")"
+          echo "$OUT"
+          echo "slot=$(echo \"$OUT\" | sed -n 's/^slot=//p')" >> "$GITHUB_OUTPUT"
+          echo "namespace=$(echo \"$OUT\" | sed -n 's/^namespace=//p')" >> "$GITHUB_OUTPUT"
+
+  deploy-ai-plan:
+    needs: [create-ai-plan]
+    runs-on: self-hosted
+    environment: staging
+    outputs:
+      infra_ready: ${{ steps.ensure.outputs.infra_ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.CODEX_GH_PAT }}
+      - id: ensure
+        env:
+          GITHUB_RUN_ID:        ${{ github.run_id }}
+          CODEX_GH_PAT:         ${{ secrets.CODEX_GH_PAT }}
+          CODEX_GH_USERNAME:    ${{ vars.CODEX_GH_USERNAME }}
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
+          CODE_ROOT_BASE:       ${{ vars.CODE_ROOT_BASE }}
+          DATA_ROOT:            ${{ vars.DATA_ROOT }}
+          POSTGRES_USER:        ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD:       ${{ secrets.REDIS_PASSWORD }}
+          SECRET_KEY:           ${{ secrets.SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          SLOT="${{ needs.create-ai-plan.outputs.slot }}"
+          ISSUE="${{ github.event.issue.number }}"
+          export CODEX_WORKSPACE_UID="$(id -u)"
+          export CODEX_WORKSPACE_GID="$(id -g)"
+          OUT="$(codexctl ci ensure-ready --env ai --slot "${SLOT}" --issue "${ISSUE}" --code-root-base "${CODE_ROOT_BASE}" --source "." --prepare-images --apply --force-apply --wait-soft-fail --output kv --vars "CODE_ROOT_BASE=${CODE_ROOT_BASE},DATA_ROOT=${DATA_ROOT}")"
+          echo "$OUT"
+          echo "infra_ready=$(echo \"$OUT\" | sed -n 's/^infraReady=//p')" >> "$GITHUB_OUTPUT"
+
+  run-codex-plan:
+    needs: [create-ai-plan, deploy-ai-plan]
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+      - env:
+          GITHUB_RUN_ID:     ${{ github.run_id }}
+          CODEX_GH_PAT:      ${{ secrets.CODEX_GH_PAT }}
+          CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:  ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          SLOT="${{ needs.create-ai-plan.outputs.slot }}"
+          NS="${{ needs.create-ai-plan.outputs.namespace }}"
+          ISSUE="${{ github.event.issue.number }}"
+          INFRA_READY="${{ needs.deploy-ai-plan.outputs.infra_ready }}"
+          ARGS=(prompt run --env ai --slot "${SLOT}" --kind plan_issue --lang ru)
+          if [ -n "$NS" ]; then ARGS+=(--namespace "$NS"); fi
+          if [ -n "$ISSUE" ]; then ARGS+=(--issue "$ISSUE"); fi
+          if [ "$INFRA_READY" = "false" ] || [ "$INFRA_READY" = "0" ]; then ARGS+=(--infra-unhealthy); fi
+          codexctl "${ARGS[@]}"
+```
+
+### 👁 7.3. AI Plan Review (review результатов планирования по комментариям)
+
+Триггер: новый comment в Issue (не PR), который содержит `[ai-plan]`. В workflow делается:
+
+1) `codexctl plan resolve-root` — найти корневую планирующую Issue для текущей (подзадачи/эпика).
+2) `ci ensure-ready --issue <ROOT>` — поднять окружение (если ещё не поднято).
+3) `prompt run --kind plan_review` с `FOCUS_ISSUE_NUMBER=<...>` — сфокусировать агента на конкретной задаче/комментарии.
+
+```yaml
+name: "AI Plan Review 👁"
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  run:
+    if: >
+      github.event.issue.pull_request == null &&
+      contains(github.event.comment.body, '[ai-plan]')
+    runs-on: self-hosted
+    environment: staging
+    env:
+      CODE_ROOT_BASE: ${{ vars.CODE_ROOT_BASE }}
+      DATA_ROOT:      ${{ vars.DATA_ROOT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - name: "Resolve root planning issue 🔗"
+        id: root_issue
+        env:
+          FOCUS_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_REPOSITORY:  ${{ github.repository }}
+          CODEX_GH_PAT:       ${{ secrets.CODEX_GH_PAT }}
+        run: |
+          set -euo pipefail
+          OUT="$(codexctl plan resolve-root --issue "${FOCUS_ISSUE_NUMBER}" --repo "${GITHUB_REPOSITORY}" --output kv)"
+          echo "$OUT"
+          echo "ROOT_ISSUE_NUMBER=$(echo \"$OUT\" | sed -n 's/^root=//p')" >> "$GITHUB_OUTPUT"
+          echo "FOCUS_ISSUE_NUMBER=$(echo \"$OUT\" | sed -n 's/^focus=//p')" >> "$GITHUB_OUTPUT"
+
+      - name: "Ensure env ready (root issue) 📇"
+        id: card
+        env:
+          ROOT_ISSUE_NUMBER: ${{ steps.root_issue.outputs.ROOT_ISSUE_NUMBER }}
+        run: |
+          set -euo pipefail
+          export CODEX_WORKSPACE_UID="$(id -u)"
+          export CODEX_WORKSPACE_GID="$(id -g)"
+          OUT="$(codexctl ci ensure-ready --env ai --issue "${ROOT_ISSUE_NUMBER}" --code-root-base "${CODE_ROOT_BASE}" --source "." --prepare-images --apply --output kv --vars "CODE_ROOT_BASE=${CODE_ROOT_BASE},DATA_ROOT=${DATA_ROOT}")"
+          echo "$OUT"
+          echo "SLOT=$(echo \"$OUT\" | sed -n 's/^slot=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          echo "NS=$(echo \"$OUT\" | sed -n 's/^namespace=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          CREATED="$(echo \"$OUT\" | sed -n 's/^created=//p' | head -n1)"
+          RECREATED="$(echo \"$OUT\" | sed -n 's/^recreated=//p' | head -n1)"
+          if [ "$CREATED" = "true" ] || [ "$RECREATED" = "true" ]; then
+            echo "NEW_ENV=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "NEW_ENV=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Run plan review agent 🤖"
+        env:
+          ROOT_ISSUE_NUMBER:  ${{ steps.root_issue.outputs.ROOT_ISSUE_NUMBER }}
+          FOCUS_ISSUE_NUMBER: ${{ steps.root_issue.outputs.FOCUS_ISSUE_NUMBER }}
+        run: |
+          set -euo pipefail
+          SLOT_VAL="${{ steps.card.outputs.SLOT }}"
+          NS_VAL="${{ steps.card.outputs.NS }}"
+          NEW_ENV="${{ steps.card.outputs.NEW_ENV }}"
+          ROOT="${ROOT_ISSUE_NUMBER}"
+          FOCUS="${FOCUS_ISSUE_NUMBER}"
+          RESUME_FLAG="--resume"
+          VARS="FOCUS_ISSUE_NUMBER=${FOCUS}"
+          if [ "${NEW_ENV}" = "true" ]; then
+            RESUME_FLAG=""
+            VARS="FOCUS_ISSUE_NUMBER=${FOCUS},PROMPT_CONTINUATION=1,PROMPT_MODE=full"
+          fi
+          ARGS=(prompt run --env ai --slot "${SLOT_VAL}" --kind plan_review --lang ru)
+          if [ -n "${NS_VAL}" ]; then ARGS+=(--namespace "${NS_VAL}"); fi
+          if [ -n "${ROOT}" ]; then ARGS+=(--issue "${ROOT}"); fi
+          ARGS+=(--vars "${VARS}")
+          if [ -n "${RESUME_FLAG}" ]; then ARGS+=("${RESUME_FLAG}"); fi
+          codexctl "${ARGS[@]}"
+```
+
+### 🛠 7.4. AI Dev по Issue (лейбл `[ai-dev]`)
+
+Workflow:
+
+1) Проверить, что лейбл `[ai-dev]` и актор входит в `AI_ALLOWED_USERS`.
+2) `ci ensure-slot --env ai --issue <N>` — выбрать/создать слот (учитывая `DEV_SLOTS_MAX`).
+3) `ci ensure-ready --env ai --slot <SLOT> --issue <N> --prepare-images --apply` — поднять AI-dev окружение.
+4) Подготовить рабочую ветку в workspace слота (`codex/issue-<N>`).
+5) `prompt run --kind dev_issue` — запустить dev‑агента (если infra нездорова — добавить `--infra-unhealthy`).
+6) auto-commit → push, найти PR по ветке, прикрепить PR к слоту (`manage-env set`) и
+   запостить комментарий со ссылками (`manage-env comment` + `gh pr comment`).
+7) На сбое — cleanup (`manage-env cleanup --with-configmap`).
+
+```yaml
+name: "AI Dev Issue 🛠"
+
+on:
+  issues:
+    types: [labeled]
+
+env:
+  AI_ALLOWED_USERS: ${{ vars.AI_ALLOWED_USERS }}
+  CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+
+concurrency:
+  group: ai-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  create-ai:
+    if: >-
+      github.event.label.name == '[ai-dev]' &&
+      contains(format(',{0},', vars.AI_ALLOWED_USERS), format(',{0},', github.actor))
+    runs-on: self-hosted
+    environment: staging
+    outputs:
+      slot: ${{ steps.alloc.outputs.slot }}
+      namespace: ${{ steps.alloc.outputs.namespace }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - id: alloc
+        env:
+          GITHUB_RUN_ID:     ${{ github.run_id }}
+          CODEX_GH_PAT:      ${{ secrets.CODEX_GH_PAT }}
+          CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+        run: |
+          set -euo pipefail
+          ISSUE="${{ github.event.issue.number }}"
+          MAX="${{ vars.DEV_SLOTS_MAX }}"
+          ARGS=(ci ensure-slot --env ai --issue "${ISSUE}" --output kv)
+          if [ -n "$MAX" ]; then ARGS+=(--max "$MAX"); fi
+          OUT="$(codexctl "${ARGS[@]}")"
+          echo "$OUT"
+          echo "slot=$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          echo "namespace=$(echo "$OUT" | sed -n 's/^namespace=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+
+  deploy-ai:
+    needs: [create-ai]
+    runs-on: self-hosted
+    environment: staging
+    outputs:
+      infra_ready: ${{ steps.ensure.outputs.infra_ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - id: ensure
+        env:
+          CODE_ROOT_BASE:       ${{ vars.CODE_ROOT_BASE }}
+          DATA_ROOT:            ${{ vars.DATA_ROOT }}
+          # ... а также CODEX_GH_PAT / OPENAI_API_KEY / секреты приложения (см. project-example)
+        run: |
+          set -euo pipefail
+          SLOT="${{ needs.create-ai.outputs.slot }}"
+          ISSUE="${{ github.event.issue.number }}"
+          MAX="${{ vars.DEV_SLOTS_MAX }}"
+          export CODEX_WORKSPACE_UID="$(id -u)"
+          export CODEX_WORKSPACE_GID="$(id -g)"
+          ARGS=(ci ensure-ready --env ai --slot "${SLOT}" --issue "${ISSUE}" --code-root-base "${CODE_ROOT_BASE}" --source "." --prepare-images --apply --force-apply --wait-soft-fail --output kv --vars "CODE_ROOT_BASE=${CODE_ROOT_BASE},DATA_ROOT=${DATA_ROOT}")
+          if [ -n "$MAX" ]; then ARGS+=(--max "$MAX"); fi
+          OUT="$(codexctl "${ARGS[@]}")"
+          echo "$OUT"
+          echo "infra_ready=$(echo "$OUT" | sed -n 's/^infraReady=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+
+  run-codex:
+    needs: [create-ai, deploy-ai]
+    runs-on: self-hosted
+    environment: staging
+    env:
+      CODE_ROOT_BASE: ${{ vars.CODE_ROOT_BASE }}
+      CODEX_GH_PAT:   ${{ secrets.CODEX_GH_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+
+      - name: "Ensure working branch 🌿"
+        env:
+          SLOT: ${{ needs.create-ai.outputs.slot }}
+        run: |
+          set -euo pipefail
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          cd "${CODE_ROOT_BASE}/${SLOT}/src"
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@example.com"
+          git checkout -b "codex/issue-${ISSUE_NUMBER}" || git checkout "codex/issue-${ISSUE_NUMBER}"
+
+      - name: "Run Codex dev agent 🤖"
+        env:
+          SLOT:  ${{ needs.create-ai.outputs.slot }}
+          NS:    ${{ needs.create-ai.outputs.namespace }}
+          ISSUE: ${{ github.event.issue.number }}
+          INFRA_READY: ${{ needs.deploy-ai.outputs.infra_ready }}
+        run: |
+          set -euo pipefail
+          ARGS=(prompt run --env ai --slot "${SLOT}" --kind dev_issue --lang ru)
+          if [ -n "$NS" ]; then ARGS+=(--namespace "$NS"); fi
+          if [ -n "$ISSUE" ]; then ARGS+=(--issue "$ISSUE"); fi
+          if [ "$INFRA_READY" = "false" ] || [ "$INFRA_READY" = "0" ]; then ARGS+=(--infra-unhealthy); fi
+          codexctl "${ARGS[@]}"
+
+      - name: "Auto-commit/push + PR link/comment"
+        run: |
+          set -euo pipefail
+          # ... (commit/push; detect PR; manage-env set; manage-env comment; gh pr comment)
+          true
+
+  cleanup-ai:
+    needs: [create-ai, deploy-ai, run-codex]
+    if: always()
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+      - run: |
+          set -euo pipefail
+          # ... cleanup on failure only
+          true
+```
+
+Полный пример см. в репозитории project-example: `.github/workflows/ai_dev_issue.yml`.
+
+### 👁 7.5. AI PR Review (авто‑исправление по Changes Requested)
+
+Триггер: submitted review со статусом `changes_requested`. Workflow поднимает окружение по PR, запускает агента
+`dev_review`, затем применяет изменения и комментирует PR через `codexctl pr review-apply`.
+
+```yaml
+name: "AI PR Review 👁"
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+env:
+  AI_ALLOWED_USERS: ${{ vars.AI_ALLOWED_USERS }}
+  CODEX_GH_USERNAME: ${{ vars.CODEX_GH_USERNAME }}
+
+concurrency:
+  group: ai-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: >-
+      github.event.review.state == 'changes_requested' &&
+      contains(format(',{0},', vars.AI_ALLOWED_USERS), format(',{0},', github.actor))
+    runs-on: self-hosted
+    environment: staging
+    env:
+      CODE_ROOT_BASE:       ${{ vars.CODE_ROOT_BASE }}
+      CODEX_GH_PAT:         ${{ secrets.CODEX_GH_PAT }}
+      DATA_ROOT:            ${{ vars.DATA_ROOT }}
+      CODEX_GH_USERNAME:    ${{ vars.CODEX_GH_USERNAME }}
+      OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+      CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
+      # ... плюс секреты приложения (POSTGRES_*, REDIS_PASSWORD, SECRET_KEY и т.п.)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.CODEX_GH_PAT }}
+          fetch-depth: 0
+
+      - id: env
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          echo "info: ensuring AI PR review environment ready via codexctl (ensure-ready)" >&2
+          export CODEX_WORKSPACE_UID="$(id -u)"
+          export CODEX_WORKSPACE_GID="$(id -g)"
+          OUT="$(codexctl ci ensure-ready --env ai --pr "${PR_NUMBER}" --code-root-base "${CODE_ROOT_BASE}" --source "." --prepare-images --apply --output kv --vars "CODE_ROOT_BASE=${CODE_ROOT_BASE},DATA_ROOT=${DATA_ROOT}")"
+          echo "$OUT"
+          echo "SLOT=$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          echo "NS=$(echo "$OUT" | sed -n 's/^namespace=//p' | head -n1)" >> "$GITHUB_OUTPUT"
+          CREATED="$(echo "$OUT" | sed -n 's/^created=//p' | head -n1)"
+          RECREATED="$(echo "$OUT" | sed -n 's/^recreated=//p' | head -n1)"
+          if [ "$CREATED" = "true" ] || [ "$RECREATED" = "true" ]; then
+            echo "NEW_ENV=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "NEW_ENV=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Run Codex review-fix agent 🤖"
+        run: |
+          set -euo pipefail
+          SLOT="${{ steps.env.outputs.SLOT }}"
+          NS="${{ steps.env.outputs.NS }}"
+          NEW_ENV="${{ steps.env.outputs.NEW_ENV }}"
+          PR="${{ github.event.pull_request.number }}"
+          KIND="dev_review"
+          RESUME_FLAG="--resume"
+          VARS=""
+          if [ "${NEW_ENV}" = "true" ]; then
+            RESUME_FLAG=""
+            VARS="PROMPT_CONTINUATION=1,PROMPT_MODE=full"
+          fi
+          ARGS=(prompt run --env ai --slot "${SLOT}" --kind "${KIND}" --lang ru --pr "${PR}")
+          if [ -n "$NS" ]; then ARGS+=(--namespace "$NS"); fi
+          if [ -n "$VARS" ]; then ARGS+=(--vars "$VARS"); fi
+          if [ -n "$RESUME_FLAG" ]; then ARGS+=("$RESUME_FLAG"); fi
+          codexctl "${ARGS[@]}"
+
+      - name: "Apply review changes and comment 💾"
+        run: |
+          set -euo pipefail
+          SLOT="${{ steps.env.outputs.SLOT }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          codexctl pr review-apply --env ai --slot "${SLOT}" --pr "${PR_NUMBER}" --code-root-base "${CODE_ROOT_BASE}" --lang ru
+```
+
+Полный пример см. в репозитории project-example: `.github/workflows/ai_pr_review.yml`.
+
+### 🧯 7.6. Staging Repair по Issue (лейбл `[ai-repair]`)
+
+Этот режим поднимает окружение `ai-repair` (pod Codex + RBAC к namespace staging), синхронизирует исходники staging,
+запускает агента `ai-repair_issue`, и при необходимости пушит изменения в ветку `codex/ai-repair-<N>`.
+
+```yaml
+name: "Staging Repair 🧯"
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  run:
+    if: github.event.label.name == '[ai-repair]'
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
 
-      - name: "Build codexctl"
+      - id: alloc
         run: |
-          go build -o ./codexctl ./cmd/codexctl
+          set -euo pipefail
+          OUT="$(codexctl ci ensure-slot --env ai-repair --issue "${{ github.event.issue.number }}" --output kv)"
+          SLOT="$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)"
+          echo "slot=$SLOT" >> "$GITHUB_OUTPUT"
 
-      - name: "Mirror images"
-        env:
-          REGISTRY_HOST: registry.local:32000
-        run: ./codexctl images mirror --env staging
+      - run: |
+          set -euo pipefail
+          codexctl ci apply --env ai-repair --slot "${{ steps.alloc.outputs.slot }}" --preflight --wait --only-infra namespace-and-config,codex-ai-repair-rbac --only-services codex
 
-      - name: "Build images"
-        env:
-          REGISTRY_HOST: registry.local:32000
-        run: ./codexctl images build --env staging
-
-      - name: "Apply stack"
-        env:
-          KUBECONFIG: /path/to/staging.kubeconfig
-        run: ./codexctl apply --env staging --wait --preflight
+      - run: codexctl prompt run --env ai-repair --slot "${{ steps.alloc.outputs.slot }}" --kind ai-repair_issue --lang ru --issue "${{ github.event.issue.number }}"
 ```
 
-### 🤖 7.2. Minimal workflow for a dev-AI slot per Issue
+Полный пример см. в репозитории project-example: `.github/workflows/ai_repair_issue.yml`.
 
-High-level flow:
+### 👁 7.7. Staging Repair PR Review (Changes Requested для `codex/ai-repair-*`)
 
-1. `ci ensure-slot --env ai --issue <N>` — pick/create a slot.
-2. `ci ensure-ready --env ai --slot <SLOT> --prepare-images --apply` — deploy infrastructure and services.
-3. `prompt run --env ai --slot <SLOT> --kind dev_issue` — start a Codex agent.
-4. `manage-env cleanup --env ai --issue <N>` — clean up the slot (if needed).
+Триггер: `changes_requested` в review и ветка PR начинается с `codex/ai-repair-`. Workflow обеспечивает `ai-repair`
+окружение и запускает `ai-repair_review`, затем применяет фиксы через `codexctl pr review-apply`.
 
-### 🔑 7.3. Secrets and PAT for the GitHub bot
+```yaml
+name: "Staging Repair PR Review 👁"
 
-Recommended set of secrets/vars in your project repository (for example, `codex-project`):
+on:
+  pull_request_review:
+    types: [submitted]
 
-- `CODEX_GH_PAT` — PAT of the GitHub bot user;
-- `CODEX_GH_USERNAME` — bot username;
-- `KUBECONFIG`/paths to kubeconfig for staging;
-- secrets for DB/Redis/cache/queue (username/password, DSN, etc.);
-- `REGISTRY_HOST` and (optionally) registry credentials;
-- `OPENAI_API_KEY` — OpenAI API key;
-- `CONTEXT7_API_KEY` — API key for Context7 (if used).
+jobs:
+  run:
+    if: >
+      github.event.review.state == 'changes_requested' &&
+      startsWith(github.event.pull_request.head.ref, 'codex/ai-repair-')
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.CODEX_GH_PAT }}
+          fetch-depth: 0
 
-How to create a user and PAT:
+      - id: alloc
+        run: |
+          set -euo pipefail
+          OUT="$(codexctl ci ensure-slot --env ai-repair --pr "${{ github.event.pull_request.number }}" --output kv)"
+          SLOT="$(echo "$OUT" | sed -n 's/^slot=//p' | head -n1)"
+          echo "slot=$SLOT" >> "$GITHUB_OUTPUT"
 
-1. Create a separate technical GitHub account for the bot (for example, `codex-bot-42`).
-2. In account settings go to **Developer settings → Personal access tokens → Fine-grained**.
-3. Create a token with permissions:
-   - access to the project repository (for example, `codex-project`, read/write for `code`, `pull requests`, `issues`);
-   - access to Actions (if you need to control workflows).
-4. Save the token and add it as `CODEX_GH_PAT` in repository secrets.
+      - run: codexctl ci apply --env ai-repair --slot "${{ steps.alloc.outputs.slot }}" --preflight --wait --only-infra namespace-and-config,codex-ai-repair-rbac --only-services codex
+      - run: codexctl prompt run --env ai-repair --slot "${{ steps.alloc.outputs.slot }}" --kind ai-repair_review --lang ru --pr "${{ github.event.pull_request.number }}" --resume
+      - run: codexctl pr review-apply --env ai-repair --slot "${{ steps.alloc.outputs.slot }}" --pr "${{ github.event.pull_request.number }}" --code-root-base "${{ vars.CODE_ROOT_BASE }}" --lang ru
+```
+
+Полный пример см. в репозитории project-example: `.github/workflows/ai_repair_pr_review.yml`.
+
+### 🧹 7.8. Cleanup (закрытие Issue/PR)
+
+При закрытии Issue/PR workflow очищает окружения (`manage-env cleanup`) и удаляет ветки `codex/issue-*` /
+`codex/ai-repair-*`. Если PR был merged, workflow дополнительно закрывает связанную Issue (по номеру, вытащенному из имени ветки).
+
+```yaml
+name: "AI Cleanup 🧹"
+
+on:
+  pull_request:
+    types: [closed]
+  issues:
+    types: [closed]
+
+jobs:
+  cleanup:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEX_GH_PAT }}
+      - if: github.event_name == 'pull_request'
+        run: codexctl manage-env cleanup --env ai --pr "${{ github.event.pull_request.number }}" --with-configmap || true
+      - if: github.event_name == 'issues'
+        run: codexctl manage-env cleanup --env ai --issue "${{ github.event.issue.number }}" --with-configmap || true
+```
+
+Полный пример см. в репозитории project-example: `.github/workflows/ai_cleanup.yml`.
+
+### 🔑 7.9. Секреты и PAT для GitHub‑бота
+
+Рекомендуемый набор секретов/vars в репозитории вашего проекта (например, `codex-project`):
+
+- `CODEX_GH_PAT` — PAT пользователя‑бота GitHub;
+- `CODEX_GH_USERNAME` — имя пользователя‑бота; Не используйте личный аккаунт разработчика, создайте отдельный технический аккаунт.
+- `KUBECONFIG`/пути к kubeconfig для staging;
+- секреты БД/Redis/кеша/очереди (username/password, DSN и т.п.);
+- `REGISTRY_HOST` и (опционально) реквизиты доступа к реестру.
+- `OPENAI_API_KEY` — API‑ключ OpenAI.
+- `CONTEXT7_API_KEY` — API‑ключ для Context7 (если используется).
+- `AI_ALLOWED_USERS` (vars) — список разрешённых GitHub‑пользователей, в формате `user1,user2,user3`.
+- `DEV_SLOTS_MAX` (vars) — максимум слотов, который может выделять `ci ensure-slot/ensure-ready`.
+
+Как создать пользователя и PAT:
+
+1. Создать отдельный технический аккаунт GitHub для бота (например, `codex-bot-42`).
+2. В настройках аккаунта выбрать **Developer settings → Personal access tokens → Fine-grained**.
+3. Создать токен с правами:
+   - доступ к репозиторию проекта (например, `codex-project`, read/write для `code`, `pull requests`, `issues`);
+   - доступ к Actions (если нужно управлять workflow).
+4. Сохранить токен, добавить его в secrets репозитория как `CODEX_GH_PAT`.
 
 ---
 
-## 🐳 8. Codex agent image (project example)
+## 🐳 8. Образ Codex‑агента (пример проекта)
 
-The example agent Dockerfile lives in the project example repo:
+Пример Dockerfile для образа агента находится в репозитории проекта‑примера:
 `github.com/codex-k8s/project-example/deploy/codex/Dockerfile`.
 
-It includes everything the agent needs inside the pod:
+В нём есть всё, что нужно агенту внутри pod’а:
 
 - Node + Codex CLI (`@openai/codex`);
-- Go toolchain + plugins (`protoc-gen-go`, `protoc-gen-go-grpc`, `wire`);
-- `protoc` and standard includes;
-- Python + virtualenv with basic libraries (`requests`, `httpx`, `redis`, `psycopg[binary]`, `PyYAML`, `ujson`);
+- Go toolchain + плагины (`protoc-gen-go`, `protoc-gen-go-grpc`, `wire`);
+- `protoc` и стандартные include’ы;
+- Python + виртуальное окружение с базовыми библиотеками (`requests`, `httpx`, `redis`, `psycopg[binary]`, `PyYAML`, `ujson`);
 - `kubectl`, `gh`, `jq`, `ripgrep`, `rsync`;
-- `docker` CLI for image builds/pushes (the daemon runs on the node via a mounted socket);
-- `codexctl` built and installed into `/usr/local/bin`.
+- `docker` CLI для сборки/пуша образов (демон работает на ноде через смонтированный сокет);
+- сборка `codexctl` и установка бинаря в `/usr/local/bin`.
 
-Why this matters: the Codex agent runs in a Kubernetes pod without access to
-host tools. Missing binaries (kubectl/gh/docker/rsync/protoc, etc.) will break
-preflight checks and block apply/build/test workflows.
+Почему это важно: Codex‑агент работает внутри Kubernetes pod’а и не имеет доступа
+к инструментам хоста. Отсутствие бинарников (kubectl/gh/docker/rsync/protoc и т.д.)
+ломает preflight‑проверки и блокирует apply/build/test сценарии.
 
-You can reference this image in `images.codex` and use it in `services.codex` inside your project's `services.yaml`
-(in the examples — `codex-project`):
+Такой образ можно указать в `images.codex` и использовать в `services.codex` внутри `services.yaml` вашего проекта
+(в примерах — `codex-project`):
 
-- a `codex` Pod in each dev-AI slot will run this image;
-- inside the Pod you have `codex`, `codexctl`, `kubectl`, `gh` and other tools available.
+- Pod `codex` в каждом AI-dev слоте будет работать именно с этим образом;
+- внутри Pod’а доступны `codex`, `codexctl`, `kubectl`, `gh` и другие инструменты.
 
 ---
 
-## 🛡️ 9. Security and stability
+## 🛡️ 9. Безопасность и стабильность
 
-- **Early development stage.** `codexctl` is at an early stage of development, test coverage is limited, and unstable
-  behavior and breaking changes are possible. Use the tool carefully and plan time for debugging.
-- **Isolated clusters only.** The assumption is that `codexctl` and Codex agents run in a Kubernetes cluster
-  **separate from production**, dedicated to development and AI experiments (dev/staging/ai). **Do not use** it directly
-  on a live production cluster.
-- **Limit external access.** Dev/staging/dev-AI environments must be protected:
-  - HTTP interfaces are hidden behind an OAuth2 proxy or another authentication mechanism;
-  - ingresses and services must not be directly accessible from the internet without authorization;
-  - access to the kube API is restricted by users/roles.
-- **Codex agent permissions.** The `codex` Pod gets elevated permissions in the slot namespace (creating/updating
-  deployments, reading logs, `exec` into Pods, etc.). Make sure to:
-  - review the RBAC manifests (Role/RoleBinding) in `deploy/codex` for your project;
-  - not grant the agent permissions to manage critical namespaces;
-  - keep kubeconfig and secrets only in protected storages (GitHub secrets, Kubernetes secrets, Vault).
-- **Use with care.** Automatic changes to the cluster and repository performed by the Codex agent via `codexctl`
-  must go through human review. Design processes so that any changes made by the agent go through PRs
-  and manual approval.
+- **Ранняя стадия разработки.** `codexctl` находится на начальном этапе развития, покрытие тестами отсутствует, возможны
+  нестабильное поведение и ломающие изменения. Используйте инструмент осмотрительно и закладывайте время на отладку.
+- **Только изолированные кластеры.** Предполагается, что `codexctl` и Codex‑агенты работают в **отдельном от продакшена**
+  Kubernetes‑кластере, предназначенном для разработки и AI‑экспериментов (dev/staging/ai). **Не используйте** его напрямую
+  поверх боевого прод‑кластера.
+- **Ограничение внешнего доступа.** Dev/staging/AI-dev окружения должны быть защищены:
+  - HTTP‑интерфейсы спрятаны за OAuth2‑proxy/IAP или другим механизмом аутентификации;
+  - ingress’ы и сервисы не должны быть напрямую доступны из интернета без авторизации;
+  - доступ к kube‑API ограничен по пользователям/рольям.
+- **Права Codex‑агента.** Pod `codex` получает расширенные права в namespace слота (создание/обновление деплойментов,
+  чтение логов, `exec` в Pod’ы и т.п.). Обязательно:
+  - проверяйте RBAC манифесты (Role/RoleBinding) в `deploy/codex` для своего проекта;
+  - не выдавайте агенту права на управление критичными namespace’ами;
+  - храните kubeconfig и секреты только в защищённых хранилищах (GitHub secrets, Kubernetes secrets, Vault).
+- **Используйте с осторожностью.** Автоматические изменения кластера и репозитория, выполняемые Codex‑агентом через
+  `codexctl`, должны проходить ревью людей. Планируйте процессы так, чтобы любые изменения, внесённые агентом, проходили
+  через PR и ручное утверждение.
 
-If you integrate `codexctl` into a new project (`codex-project` or another), start with a small, isolated stack,
-gradually extend scenarios and add checks (manual review, smoke tests, dedicated namespaces/clusters for experiments).
+Если вы интегрируете `codexctl` в новый проект (`codex-project` или другой), начинайте с небольшого и изолированного
+стека, постепенно расширяя сценарии и добавляя проверки (manual review, smoke‑тесты, отдельные namespace’ы/кластера 
+для экспериментов).
