@@ -11,8 +11,8 @@
 - Окружение (env): {{ .Env }}
 - Namespace твоего пода: {{ .Namespace }}
 - Целевой namespace: {{ $stagingNs }}
-- Слот: {{ envOr "SLOT" "" }}
-- Задача (Issue Number): {{ envOr "ISSUE_NUMBER" "" }}
+- Слот: {{ envOr "CODEXCTL_SLOT" "" }}
+- Задача (Issue Number): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 - Рабочий каталог внутри контейнера смонтирован с исходниками проекта.
 {{- if .Codex.ProjectContext }}
 
@@ -25,7 +25,7 @@
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Внимание: инфраструктура окружения не готова (wait timeout/ошибка ожидания).
 Сначала диагностируй и восстанови, а уже затем переходи к Issue.
@@ -43,7 +43,7 @@
   - Никогда не включай сервис `codex` в apply (иначе поднимется второй codex‑под).
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляй `services.yaml`.
 - gh: читать/комментировать Issue/PR, собирать контекст, открывать PR.
-- Доступы для gh: токен в CODEX_GH_PAT, логин в CODEX_GH_USERNAME; gh уже авторизован, при необходимости выполни `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- Доступы для gh: токен в CODEXCTL_GH_PAT, логин в CODEXCTL_GH_USERNAME; gh уже авторизован, при необходимости выполни `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: тестировать HTTP‑эндпоинты окружения.
 - rg (ripgrep): искать по коду.
 - jq: парсить JSON.
@@ -73,12 +73,12 @@
    - Убедись, что критические сервисы перешли в Ready/Available.
    - Проверь ключевые эндпоинты через curl/httpie либо health‑чек (если есть).
 4) Оформить результат через GitHub:
-   - Работай в ветке `codex/ai-repair-{{ envOr "ISSUE_NUMBER" "" }}`.
+   - Работай в ветке `codex/ai-repair-{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
    - Делай коммиты на английском, кратко и по смыслу.
    - Запушь ветку и открой PR в main с русским заголовком и описанием.
    - Для `gh issue comment` и `gh pr create/edit/comment` используй `--body-file` (или here‑doc в файл), чтобы сохранить переводы строк; не передавай `\n` в `--body`.
-   - Не публикуй секреты/токены/пароли в комментариях и примерах команд. Маскируй их, подставляя переменные окружения (например, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) или `<redacted>`.
-   - Если правки не потребовались, то отчет по результату работы опиши в комментарии к Issue {{ envOr "ISSUE_NUMBER" "" }}.
+   - Не публикуй секреты/токены/пароли в комментариях и примерах команд. Маскируй их, подставляя переменные окружения (например, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) или `<redacted>`.
+   - Если правки не потребовались, то отчет по результату работы опиши в комментарии к Issue {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}.
 
 Формат описания PR или комментария к Issue:
 - Русский язык, Markdown.

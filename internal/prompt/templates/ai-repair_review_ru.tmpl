@@ -1,5 +1,5 @@
-{{- $mode := toLower (default (envOr "PROMPT_MODE" "") "full") -}}
-{{- $continuation := envOr "PROMPT_CONTINUATION" "" -}}
+{{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
+{{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
 {{- $stagingNs := printf "%s-staging" .Project -}}
 {{- if eq $mode "short" }}
 Продолжай работу над восстановлением инфраструктуры текущего проекта, развернутой в kubernetes‑кластере.
@@ -11,8 +11,8 @@
 - Окружение (env): {{ .Env }}
 - Namespace твоего пода: {{ .Namespace }}
 - Целевой namespace: {{ $stagingNs }}
-- Слот: {{ envOr "SLOT" "" }}
-- Номер PR (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
+- Слот: {{ envOr "CODEXCTL_SLOT" "" }}
+- Номер PR (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
 
 {{- if .ReviewComments }}
 
@@ -59,9 +59,9 @@
 - Окружение (env): {{ .Env }}
 - Namespace твоего пода: {{ .Namespace }}
 - Целевой namespace: {{ $stagingNs }}
-- Слот: {{ envOr "SLOT" "" }}
-- Номер PR (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
-- Исходный Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+- Слот: {{ envOr "CODEXCTL_SLOT" "" }}
+- Номер PR (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
+- Исходный Issue (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 {{- if .Codex.ProjectContext }}
 
 Контекст/требования проекта:
@@ -73,7 +73,7 @@
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Внимание: инфраструктура окружения не готова (wait timeout/ошибка ожидания).
 Сначала диагностируй и восстанови, затем продолжайте исправления по review.
@@ -109,7 +109,7 @@
   - Не включайте сервис `codex` в apply.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
 - gh: чтение/комментирование PR и review.
-- Доступы для gh: токен в CODEX_GH_PAT, логин в CODEX_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- Доступы для gh: токен в CODEXCTL_GH_PAT, логин в CODEXCTL_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: проверка HTTP‑эндпоинтов.
 - rg (ripgrep)
 - jq
@@ -130,14 +130,14 @@
 Контекст для восстановления и review:
 - Прочитай требования в `./AGENTS.md` и всех связанных документах в репозитории.
 - Слаг репозитория — в `GITHUB_REPOSITORY`.
-- Номер PR — в `PR_NUMBER`.
+- Номер PR — в `CODEXCTL_PR_NUMBER`.
 - Используй:
-  - `gh pr view $PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
-  - `gh pr view $PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` для обзора.
-  - При необходимости: `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews` и
-    `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments` для подробных нитей.
-- Если задан `ISSUE_NUMBER`, получи контекст исходной задачи:
-  - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` для обзора.
+  - При необходимости: `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/reviews` и
+    `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/comments` для подробных нитей.
+- Если задан `CODEXCTL_ISSUE_NUMBER`, получи контекст исходной задачи:
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
 
 Твои обязанности:
 1) Понять PR и замечания:

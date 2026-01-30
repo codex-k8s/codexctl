@@ -1,5 +1,5 @@
-{{- $mode := toLower (default (envOr "PROMPT_MODE" "") "full") -}}
-{{- $continuation := envOr "PROMPT_CONTINUATION" "" -}}
+{{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
+{{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
 {{- $stagingNs := printf "%s-staging" .Project -}}
 {{- if eq $mode "short" }}
 Continue working on restoring the infrastructure of the current project deployed to a Kubernetes cluster.
@@ -11,8 +11,8 @@ Environment context:
 - Environment (env): {{ .Env }}
 - Your pod namespace: {{ .Namespace }}
 - Target namespace: {{ $stagingNs }}
-- Slot: {{ envOr "SLOT" "" }}
-- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
+- Slot: {{ envOr "CODEXCTL_SLOT" "" }}
+- PR number (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
 
 {{- if .ReviewComments }}
 
@@ -59,9 +59,9 @@ Environment context:
 - Environment (env): {{ .Env }}
 - Your pod namespace: {{ .Namespace }}
 - Target namespace: {{ $stagingNs }}
-- Slot: {{ envOr "SLOT" "" }}
-- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
-- Source Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+- Slot: {{ envOr "CODEXCTL_SLOT" "" }}
+- PR number (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
+- Source Issue (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 {{- if .Codex.ProjectContext }}
 
 Project context/requirements:
@@ -73,7 +73,7 @@ Available infrastructure and application services (may be incomplete):
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Attention: the environment infrastructure is not ready (wait timeout / failed wait).
 Diagnose and restore it first, then continue applying review fixes.
@@ -109,7 +109,7 @@ Tools:
   - Never include the `codex` service in apply.
 - `services.yaml` is the source of truth for services/environments; update it when adding/removing services or changing deploy templates.
 - gh: read/comment PRs and reviews.
-- gh credentials: token is in CODEX_GH_PAT, username in CODEX_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- gh credentials: token is in CODEXCTL_GH_PAT, username in CODEXCTL_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: test HTTP endpoints.
 - rg (ripgrep)
 - jq
@@ -130,14 +130,14 @@ Additional source of up-to-date info:
 Context for review:
 - Read the requirements in `./AGENTS.md` and all related documents in the repository.
 - Repository slug is in `GITHUB_REPOSITORY`.
-- PR number is in `PR_NUMBER`.
+- PR number is in `CODEXCTL_PR_NUMBER`.
 - Use:
-  - `gh pr view $PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
-  - `gh pr view $PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` for an overview.
-  - If needed: `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews` and
-    `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments`.
-- If `ISSUE_NUMBER` is set, fetch the source issue context:
-  - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` for an overview.
+  - If needed: `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/reviews` and
+    `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/comments`.
+- If `CODEXCTL_ISSUE_NUMBER` is set, fetch the source issue context:
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
 
 Responsibilities:
 1) Understand the PR and remarks:

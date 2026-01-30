@@ -2,9 +2,9 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,7 +12,9 @@ import (
 
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/engine"
+	"github.com/codex-k8s/codexctl/internal/ghoutput"
 	"github.com/codex-k8s/codexctl/internal/kube"
+	"github.com/codex-k8s/codexctl/internal/state"
 )
 
 // newCICommand creates the "ci" group command for CI helpers.
@@ -43,6 +45,19 @@ func newCIImagesCommand(opts *Options) *cobra.Command {
 		Short: "Mirror and build images for CI",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envVars := ciEnv{}
+			if err := parseEnv(&envVars); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envVars.Slot
+			}
+			if !cmd.Flags().Changed("mirror") && envPresent("CODEXCTL_MIRROR_IMAGES") {
+				mirror = envVars.MirrorImages
+			}
+			if !cmd.Flags().Changed("build") && envPresent("CODEXCTL_BUILD_IMAGES") {
+				build = envVars.BuildImages
+			}
 
 			stackCfg, tmplCtx, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
 			if err != nil {
@@ -94,6 +109,61 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 		Short: "Apply manifests with retries and optional wait",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envVars := ciEnv{}
+			if err := parseEnv(&envVars); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envVars.Slot
+			}
+			if !cmd.Flags().Changed("preflight") && envPresent("CODEXCTL_PREFLIGHT") {
+				preflight = envVars.Preflight
+			}
+			if !cmd.Flags().Changed("wait") && envPresent("CODEXCTL_WAIT") {
+				wait = envVars.Wait
+			}
+			if !cmd.Flags().Changed("apply-retries") && envPresent("CODEXCTL_APPLY_RETRIES") {
+				applyRetries = envVars.ApplyRetries
+			}
+			if !cmd.Flags().Changed("wait-retries") && envPresent("CODEXCTL_WAIT_RETRIES") {
+				waitRetries = envVars.WaitRetries
+			}
+			if !cmd.Flags().Changed("apply-backoff") && envPresent("CODEXCTL_APPLY_BACKOFF") {
+				if d, err := time.ParseDuration(envVars.ApplyBackoff); err != nil {
+					return fmt.Errorf("invalid CODEXCTL_APPLY_BACKOFF: %w", err)
+				} else {
+					applyBackoff = d
+				}
+			}
+			if !cmd.Flags().Changed("wait-backoff") && envPresent("CODEXCTL_WAIT_BACKOFF") {
+				if d, err := time.ParseDuration(envVars.WaitBackoff); err != nil {
+					return fmt.Errorf("invalid CODEXCTL_WAIT_BACKOFF: %w", err)
+				} else {
+					waitBackoff = d
+				}
+			}
+			if !cmd.Flags().Changed("wait-timeout") && envPresent("CODEXCTL_WAIT_TIMEOUT") {
+				waitTimeout = envVars.WaitTimeout
+			}
+			if !cmd.Flags().Changed("request-timeout") && envPresent("CODEXCTL_REQUEST_TIMEOUT") {
+				if d, err := time.ParseDuration(envVars.RequestTime); err != nil {
+					return fmt.Errorf("invalid CODEXCTL_REQUEST_TIMEOUT: %w", err)
+				} else {
+					requestTimeout = d
+				}
+			}
+			if !cmd.Flags().Changed("only-services") && envPresent("CODEXCTL_ONLY_SERVICES") {
+				onlyServices = envVars.OnlyServices
+			}
+			if !cmd.Flags().Changed("skip-services") && envPresent("CODEXCTL_SKIP_SERVICES") {
+				skipServices = envVars.SkipServices
+			}
+			if !cmd.Flags().Changed("only-infra") && envPresent("CODEXCTL_ONLY_INFRA") {
+				onlyInfra = envVars.OnlyInfra
+			}
+			if !cmd.Flags().Changed("skip-infra") && envPresent("CODEXCTL_SKIP_INFRA") {
+				skipInfra = envVars.SkipInfra
+			}
 
 			stackCfg, ctxData, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
 			if err != nil {
@@ -158,7 +228,7 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 
 			applyKubeconfigOverride(&envCfg)
 			client := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
-			waitTimeoutResolved := resolveDeployWaitTimeout(stackCfg, waitTimeout, cmd.Flags().Changed("wait-timeout"))
+			waitTimeoutResolved := resolveDeployWaitTimeout(stackCfg, waitTimeout, cmd.Flags().Changed("wait-timeout") || envPresent("CODEXCTL_WAIT_TIMEOUT"))
 			for attempt := 1; attempt <= waitAttempts; attempt++ {
 				if err := waitForDeployments(cmd.Context(), client, ctxData.Namespace, requestTimeout, waitTimeoutResolved); err != nil {
 					if attempt == waitAttempts {
@@ -193,34 +263,57 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 // newCIEnsureSlotCommand creates "ci ensure-slot" for slot allocation in CI.
 func newCIEnsureSlotCommand(opts *Options) *cobra.Command {
 	var issue, pr, slot, max int
-	var output string
 
 	cmd := &cobra.Command{
 		Use:   "ensure-slot",
 		Short: "Ensure a slot exists for CI workflows",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envCfg := ciEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("issue") && envPresent("CODEXCTL_ISSUE_NUMBER") {
+				issue = envCfg.Issue
+			}
+			if !cmd.Flags().Changed("pr") && envPresent("CODEXCTL_PR_NUMBER") {
+				pr = envCfg.PR
+			}
+			if !cmd.Flags().Changed("max") && envPresent("CODEXCTL_DEV_SLOTS_MAX") {
+				max = envCfg.MaxSlots
+			}
 
 			inlineVars, varFiles, err := parseInlineVarsAndFiles(cmd)
 			if err != nil {
 				return err
 			}
 
-			machineOutput := strings.ToLower(output) != "plain"
 			res, err := ensureSlot(cmd.Context(), logger, opts, ensureSlotRequest{
 				envName:       opts.Env,
 				issue:         issue,
 				pr:            pr,
 				slot:          slot,
 				maxSlots:      max,
-				machineOutput: machineOutput,
+				machineOutput: false,
 				inlineVars:    inlineVars,
 				varFiles:      varFiles,
 			})
 			if err != nil {
 				return err
 			}
-			return printResolveOutput(res.record, output, logger)
+			writeErr := ghoutput.Write(map[string]string{
+				"slot":      strconv.Itoa(res.record.Slot),
+				"namespace": res.record.Namespace,
+				"env":       res.record.Env,
+			})
+			if writeErr != nil {
+				return writeErr
+			}
+			fmt.Printf("slot: %d\nnamespace: %s\nenv: %s\n", res.record.Slot, res.record.Namespace, res.record.Env)
+			return nil
 		},
 	}
 
@@ -228,7 +321,6 @@ func newCIEnsureSlotCommand(opts *Options) *cobra.Command {
 	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number selector")
 	cmd.Flags().IntVar(&pr, "pr", 0, "PR number selector")
 	cmd.Flags().IntVar(&max, "max", 0, "Maximum number of slots (0 means unlimited)")
-	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json|kv")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 
@@ -249,7 +341,6 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 		forceApply    bool
 		waitTimeout   string
 		waitSoftFail  bool
-		output        string
 	)
 
 	cmd := &cobra.Command{
@@ -257,13 +348,49 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 		Short: "Ensure an environment slot exists and is ready for CI workflows",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envCfg := ciEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("issue") && envPresent("CODEXCTL_ISSUE_NUMBER") {
+				issue = envCfg.Issue
+			}
+			if !cmd.Flags().Changed("pr") && envPresent("CODEXCTL_PR_NUMBER") {
+				pr = envCfg.PR
+			}
+			if !cmd.Flags().Changed("max") && envPresent("CODEXCTL_DEV_SLOTS_MAX") {
+				maxSlots = envCfg.MaxSlots
+			}
+			if !cmd.Flags().Changed("code-root-base") && envPresent("CODEXCTL_CODE_ROOT_BASE") {
+				codeRootBase = envCfg.CodeRootBase
+			}
+			if !cmd.Flags().Changed("source") && envPresent("CODEXCTL_SOURCE") {
+				source = envCfg.Source
+			}
+			if !cmd.Flags().Changed("prepare-images") && envPresent("CODEXCTL_PREPARE_IMAGES") {
+				prepareImages = envCfg.PrepareImages
+			}
+			if !cmd.Flags().Changed("apply") && envPresent("CODEXCTL_APPLY") {
+				doApply = envCfg.Apply
+			}
+			if !cmd.Flags().Changed("force-apply") && envPresent("CODEXCTL_FORCE_APPLY") {
+				forceApply = envCfg.ForceApply
+			}
+			if !cmd.Flags().Changed("wait-timeout") && envPresent("CODEXCTL_WAIT_TIMEOUT") {
+				waitTimeout = envCfg.WaitTimeout
+			}
+			if !cmd.Flags().Changed("wait-soft-fail") && envPresent("CODEXCTL_WAIT_SOFT_FAIL") {
+				waitSoftFail = envCfg.WaitSoftFail
+			}
 
 			inlineVars, varFiles, err := parseInlineVarsAndFiles(cmd)
 			if err != nil {
 				return err
 			}
 
-			machineOutput := strings.ToLower(output) != "plain"
 			res, err := ensureReady(cmd.Context(), logger, opts, ensureReadyRequest{
 				envName:        opts.Env,
 				issue:          issue,
@@ -276,54 +403,36 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 				doApply:        doApply,
 				forceApply:     forceApply,
 				waitTimeout:    waitTimeout,
-				waitTimeoutSet: cmd.Flags().Changed("wait-timeout"),
+				waitTimeoutSet: cmd.Flags().Changed("wait-timeout") || envPresent("CODEXCTL_WAIT_TIMEOUT"),
 				waitSoftFail:   waitSoftFail,
-				machineOutput:  machineOutput,
+				machineOutput:  false,
 				inlineVars:     inlineVars,
 				varFiles:       varFiles,
 			})
 			if err != nil {
 				return err
 			}
-
-			switch strings.ToLower(output) {
-			case "json":
-				type out struct {
-					Slot       int    `json:"slot"`
-					Namespace  string `json:"namespace"`
-					Env        string `json:"env"`
-					Created    bool   `json:"created,omitempty"`
-					Recreated  bool   `json:"recreated,omitempty"`
-					InfraReady bool   `json:"infraReady"`
-				}
-				payload, _ := json.Marshal(out{
-					Slot:       res.record.Slot,
-					Namespace:  res.record.Namespace,
-					Env:        res.record.Env,
-					Created:    res.created,
-					Recreated:  res.recreated,
-					InfraReady: res.infraReady,
-				})
-				fmt.Println(string(payload))
-			case "kv":
-				fmt.Printf("slot=%d\nnamespace=%s\nenv=%s\ncreated=%t\nrecreated=%t\ninfraReady=%t\n",
-					res.record.Slot,
-					res.record.Namespace,
-					res.record.Env,
-					res.created,
-					res.recreated,
-					res.infraReady,
-				)
-			default:
-				logger.Info("environment ensured ready",
-					"slot", res.record.Slot,
-					"namespace", res.record.Namespace,
-					"env", res.record.Env,
-					"created", res.created,
-					"recreated", res.recreated,
-					"infra_ready", res.infraReady,
-				)
+			writeErr := ghoutput.Write(map[string]string{
+				"slot":              strconv.Itoa(res.record.Slot),
+				"namespace":         res.record.Namespace,
+				"env":               res.record.Env,
+				"created":           strconv.FormatBool(res.created),
+				"recreated":         strconv.FormatBool(res.recreated),
+				"infra_ready":       strconv.FormatBool(res.infraReady),
+				"codexctl_run_args": buildCodexctlRunArgs(res.record, issue, pr, opts.Env),
+			})
+			if writeErr != nil {
+				return writeErr
 			}
+			fmt.Printf(
+				"slot: %d\nnamespace: %s\nenv: %s\ncreated: %t\nrecreated: %t\ninfra_ready: %t\n",
+				res.record.Slot,
+				res.record.Namespace,
+				res.record.Env,
+				res.created,
+				res.recreated,
+				res.infraReady,
+			)
 			return nil
 		},
 	}
@@ -332,18 +441,38 @@ func newCIEnsureReadyCommand(opts *Options) *cobra.Command {
 	cmd.Flags().IntVar(&issue, "issue", 0, "Issue number selector")
 	cmd.Flags().IntVar(&pr, "pr", 0, "PR number selector")
 	cmd.Flags().IntVar(&maxSlots, "max", 0, "Maximum number of slots (0 means unlimited)")
-	cmd.Flags().StringVar(&codeRootBase, "code-root-base", os.Getenv("CODE_ROOT_BASE"), "Base path for slot workspaces")
+	cmd.Flags().StringVar(&codeRootBase, "code-root-base", os.Getenv("CODEXCTL_CODE_ROOT_BASE"), "Base path for slot workspaces")
 	cmd.Flags().StringVar(&source, "source", ".", "Source directory to sync")
 	cmd.Flags().BoolVar(&prepareImages, "prepare-images", false, "Mirror external and build local images before apply")
 	cmd.Flags().BoolVar(&doApply, "apply", false, "Apply manifests for the ensured environment")
 	cmd.Flags().BoolVar(&forceApply, "force-apply", false, "Apply manifests even for existing environments")
 	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", defaultDeployWaitTimeout, "kubectl wait timeout for deployments")
 	cmd.Flags().BoolVar(&waitSoftFail, "wait-soft-fail", false, "Do not fail when deployment wait times out")
-	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json|kv")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")
 
 	return cmd
+}
+
+func buildCodexctlRunArgs(rec state.EnvRecord, issue, pr int, envName string) string {
+	env := rec.Env
+	if env == "" {
+		env = strings.TrimSpace(envName)
+	}
+	if env == "" {
+		env = "ai"
+	}
+	args := []string{"--env", env, "--slot", strconv.Itoa(rec.Slot)}
+	if rec.Namespace != "" {
+		args = append(args, "--namespace", rec.Namespace)
+	}
+	if issue > 0 {
+		args = append(args, "--issue", strconv.Itoa(issue))
+	}
+	if pr > 0 {
+		args = append(args, "--pr", strconv.Itoa(pr))
+	}
+	return strings.Join(args, " ")
 }
 
 // waitForDeployments runs kubectl wait with a request timeout wrapper.

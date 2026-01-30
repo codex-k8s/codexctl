@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -47,6 +48,21 @@ func Execute(args []string, logger *slog.Logger) error {
 
 // newRootCommand constructs the root cobra.Command with global flags and subcommands.
 func newRootCommand(opts *Options, logger *slog.Logger) *cobra.Command {
+	baseCfg := baseEnv{}
+	if err := parseEnv(&baseCfg); err != nil {
+		logger.Warn("failed to parse CODEXCTL_* env defaults", "error", err)
+	}
+	configDefault := defaultConfigPath
+	if strings.TrimSpace(baseCfg.ConfigPath) != "" {
+		configDefault = strings.TrimSpace(baseCfg.ConfigPath)
+	}
+	envDefault := strings.TrimSpace(baseCfg.Env)
+	namespaceDefault := strings.TrimSpace(baseCfg.Namespace)
+	logLevelDefault := strings.TrimSpace(baseCfg.LogLevel)
+	if logLevelDefault == "" {
+		logLevelDefault = "info"
+	}
+
 	cmd := &cobra.Command{
 		Use:   "codexctl",
 		Short: "codexctl is a declarative Kubernetes deployment helper",
@@ -61,10 +77,10 @@ func newRootCommand(opts *Options, logger *slog.Logger) *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().StringVarP(&opts.ConfigPath, "config", "c", defaultConfigPath, "Path to services.yaml configuration file")
-	cmd.PersistentFlags().StringVar(&opts.Env, "env", "", "Environment name (e.g. dev, staging, ai)")
-	cmd.PersistentFlags().StringVar(&opts.Namespace, "namespace", "", "Target Kubernetes namespace override")
-	cmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
+	cmd.PersistentFlags().StringVarP(&opts.ConfigPath, "config", "c", configDefault, "Path to services.yaml configuration file")
+	cmd.PersistentFlags().StringVar(&opts.Env, "env", envDefault, "Environment name (e.g. dev, staging, ai)")
+	cmd.PersistentFlags().StringVar(&opts.Namespace, "namespace", namespaceDefault, "Target Kubernetes namespace override")
+	cmd.PersistentFlags().String("log-level", logLevelDefault, "Log level (debug, info, warn, error)")
 
 	cmd.AddCommand(
 		newApplyCommand(opts),

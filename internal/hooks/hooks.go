@@ -200,11 +200,11 @@ func (e *Executor) runKubectlWait(ctx context.Context, step config.HookStep, ste
 
 // runGitHubComment posts a comment via the gh CLI.
 func (e *Executor) runGitHubComment(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
-	token, ok := stepCtx.Template.EnvMap["CODEX_GH_PAT"]
+	token, ok := stepCtx.Template.EnvMap["CODEXCTL_GH_PAT"]
 	if !ok || strings.TrimSpace(token) == "" {
-		return fmt.Errorf("github.comment requires CODEX_GH_PAT in configuration")
+		return fmt.Errorf("github.comment requires CODEXCTL_GH_PAT in configuration")
 	}
-	username := strings.TrimSpace(stepCtx.Template.EnvMap["CODEX_GH_USERNAME"])
+	username := strings.TrimSpace(stepCtx.Template.EnvMap["CODEXCTL_GH_USERNAME"])
 
 	bodyRaw, _ := step.With["body"].(string)
 	if strings.TrimSpace(bodyRaw) == "" {
@@ -243,7 +243,7 @@ func (e *Executor) runGitHubComment(ctx context.Context, step config.HookStep, s
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	envVars := os.Environ()
-	// gh CLI accepts both GH_TOKEN and GITHUB_TOKEN; we derive them from CODEX_GH_PAT.
+	// gh CLI accepts both GH_TOKEN and GITHUB_TOKEN; we derive them from CODEXCTL_GH_PAT.
 	envVars = append(envVars, "GITHUB_TOKEN="+token)
 	envVars = append(envVars, "GH_TOKEN="+token)
 	cmd.Env = envVars
@@ -339,7 +339,7 @@ func (e *Executor) runEnsureCodexSecrets(ctx context.Context, step config.HookSt
 
 	openAI := strings.TrimSpace(stepCtx.Template.EnvMap["OPENAI_API_KEY"])
 	context7 := strings.TrimSpace(stepCtx.Template.EnvMap["CONTEXT7_API_KEY"])
-	ghToken := strings.TrimSpace(stepCtx.Template.EnvMap["CODEX_GH_PAT"])
+	ghToken := strings.TrimSpace(stepCtx.Template.EnvMap["CODEXCTL_GH_PAT"])
 
 	if openAI != "" {
 		if err := applyGenericSecret(ctx, stepCtx.KubeClient, ns, "openai-secret", map[string]string{
@@ -351,12 +351,12 @@ func (e *Executor) runEnsureCodexSecrets(ctx context.Context, step config.HookSt
 
 	if ghToken != "" {
 		if err := applyGenericSecret(ctx, stepCtx.KubeClient, ns, "github-secret", map[string]string{
-			"CODEX_GH_PAT": ghToken,
+			"CODEXCTL_GH_PAT": ghToken,
 		}); err != nil {
 			return fmt.Errorf("apply github-secret: %w", err)
 		}
 	} else {
-		e.logger.Warn("CODEX_GH_PAT not set, Codex GitHub auth may fail")
+		e.logger.Warn("CODEXCTL_GH_PAT not set, Codex GitHub auth may fail")
 	}
 
 	if context7 != "" {

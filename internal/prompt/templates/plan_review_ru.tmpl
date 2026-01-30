@@ -1,5 +1,5 @@
-{{- $mode := toLower (default (envOr "PROMPT_MODE" "") "full") -}}
-{{- $continuation := envOr "PROMPT_CONTINUATION" "" -}}
+{{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
+{{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
 {{- if eq $mode "short" }}
 Продолжайте review результатов планирования в этой Codex‑сессии.
 В одном из Issue появился новый комментарий с тегом `[ai-plan]`.
@@ -10,9 +10,9 @@
 Контекст окружения:
 - Окружение (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
-- Слот: {{ envOr "SLOT" "" }}
-- Исходный Issue планирования (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
-- Focus Issue (FOCUS_ISSUE_NUMBER): {{ envOr "FOCUS_ISSUE_NUMBER" "" }}
+- Слот: {{ envOr "CODEXCTL_SLOT" "" }}
+- Исходный Issue планирования (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
+- Focus Issue (CODEXCTL_FOCUS_ISSUE_NUMBER): {{ envOr "CODEXCTL_FOCUS_ISSUE_NUMBER" "" }}
 
 {{- if .IssueComments }}
 
@@ -76,9 +76,9 @@
 Контекст окружения:
 - Окружение (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
-- Слот: {{ envOr "SLOT" "" }}
-- Исходный планирующий Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
-- Focus Issue с комментарием (FOCUS_ISSUE_NUMBER): {{ envOr "FOCUS_ISSUE_NUMBER" "" }}
+- Слот: {{ envOr "CODEXCTL_SLOT" "" }}
+- Исходный планирующий Issue (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
+- Focus Issue с комментарием (CODEXCTL_FOCUS_ISSUE_NUMBER): {{ envOr "CODEXCTL_FOCUS_ISSUE_NUMBER" "" }}
 - Рабочая директория в контейнере смонтирована на исходники проекта.
 {{- if .Codex.ProjectContext }}
 
@@ -91,7 +91,7 @@
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Внимание: инфраструктура не готова (таймаут/ошибка ожидания).
 - Отразите это в обновлённом плане и добавьте подзадачу по диагностике/восстановлению.
@@ -134,7 +134,7 @@
   - Применение в review‑планировании не выполняй; если требуется сослаться на него — используй фильтры и избегай полного apply и сервиса `codex`.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
 - gh: чтение/комментирование Issues/PR, создание/редактирование Issues (только если попросили).
-- Доступы для gh: токен в CODEX_GH_PAT, логин в CODEX_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- Доступы для gh: токен в CODEXCTL_GH_PAT, логин в CODEXCTL_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: чтение HTTP‑эндпоинтов.
 - rg (ripgrep)
 - jq
@@ -155,8 +155,8 @@
 Правила review результатов планирования:
 - `[ai-plan]` в комментарии воспринимайте как новые требования/уточнения для текущего запуска.
 - Нужно обработать ВСЕ видимые комментарии пользователя:
-  - в исходном Issue `ISSUE_NUMBER`;
-  - в focus Issue `FOCUS_ISSUE_NUMBER`;
+  - в исходном Issue `CODEXCTL_ISSUE_NUMBER`;
+  - в focus Issue `CODEXCTL_FOCUS_ISSUE_NUMBER`;
   - во всех созданных в рамках планирования Issues (дочерние задачи/эпики), которые вы найдёте по маркеру `AI-PLAN-PARENT`.
 - Отвечайте только на комментарии, которые не скрыты и не помечены как resolved.
 - Если отвечаете на комментарий, в тексте ответа используйте ссылку на него:
@@ -176,18 +176,18 @@
 Сбор контекста:
 1) Исходный планирующий Issue:
    - Получите полный текст:
-     - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+     - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
    - Поймите исходную цель и текущий статус.
 2) Существующий результат планирования:
    - Проверьте, где он зафиксирован:
      - в комментарии к исходному Issue, или
      - в дочерних Issues с маркером:
 
-       `AI-PLAN-PARENT: #{{ envOr "ISSUE_NUMBER" "" }}`
+       `AI-PLAN-PARENT: #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`
 
    - Найдите все дочерние Issues (если они есть) и соберите их комментарии пользователя.
 3) Новый комментарий:
-   - В focus Issue `FOCUS_ISSUE_NUMBER` найдите последний комментарий с `[ai-plan]`.
+   - В focus Issue `CODEXCTL_FOCUS_ISSUE_NUMBER` найдите последний комментарий с `[ai-plan]`.
    - Рассматривайте его как источник новых требований для этого запуска.
 
 Логика планирования по лейблам (лейблов может быть несколько одновременно):
@@ -206,7 +206,7 @@
   - создавайте новые Issues только если пользователь явно просит дополнительные варианты.
 - Если создаёте новые Issues, добавляйте в их тело строку‑маркер:
 
-  `AI-PLAN-PARENT: #{{ envOr "ISSUE_NUMBER" "" }}`
+  `AI-PLAN-PARENT: #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`
 
 Коммуникация результата:
 - Ответьте на все нерешённые (не скрытые, не resolved) комментарии пользователя:
@@ -216,7 +216,7 @@
   Для каждого ответа используйте формат с ссылкой на конкретный комментарий.
 - При необходимости обновите итоговый комментарий в исходном Issue и/или тела созданных Issues.
 - Для `gh issue comment` и `gh issue edit` используйте `--body-file` (или here‑doc в файл), чтобы сохранить переводы строк; не передавайте `\n` в `--body`.
-- Не публикуйте секреты/токены/пароли в комментариях и примерах команд. Маскируйте их, подставляя переменные окружения (например, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) или `<redacted>`.
+- Не публикуйте секреты/токены/пароли в комментариях и примерах команд. Маскируйте их, подставляя переменные окружения (например, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) или `<redacted>`.
 
 Рекомендуемый порядок действий:
 1. Соберите полный контекст по исходному Issue, focus Issue и существующим результатам.

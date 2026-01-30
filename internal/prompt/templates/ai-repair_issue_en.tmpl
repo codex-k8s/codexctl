@@ -11,8 +11,8 @@ Environment context:
 - Environment (env): {{ .Env }}
 - Your pod namespace: {{ .Namespace }}
 - Target namespace: {{ $stagingNs }}
-- Slot: {{ envOr "SLOT" "" }}
-- Issue Number: {{ envOr "ISSUE_NUMBER" "" }}
+- Slot: {{ envOr "CODEXCTL_SLOT" "" }}
+- Issue Number: {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 - The working directory inside the container is mounted with the project sources.
 {{- if .Codex.ProjectContext }}
 
@@ -25,7 +25,7 @@ Available infrastructure and application services (may be incomplete):
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Attention: the environment infrastructure is not ready (wait timeout / failed wait).
 Diagnose and restore it first, and only then proceed with the Issue.
@@ -43,7 +43,7 @@ Core tools:
   - Never include the `codex` service in apply (otherwise a second Codex pod will be started).
 - `services.yaml` is the source of truth for services/environments; update it when adding/removing services or changing deploy templates.
 - gh: read/comment Issues/PRs, gather context, open PRs.
-- gh credentials: token is in CODEX_GH_PAT, username in CODEX_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- gh credentials: token is in CODEXCTL_GH_PAT, username in CODEXCTL_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: test HTTP endpoints.
 - rg (ripgrep): search the codebase.
 - jq: parse JSON.
@@ -73,12 +73,12 @@ Current task:
    - Ensure critical services reach Ready/Available.
    - Test key endpoints via curl/httpie or a health check (if available).
 4) Deliver the result via GitHub:
-   - Work in branch `codex/ai-repair-{{ envOr "ISSUE_NUMBER" "" }}`.
+   - Work in branch `codex/ai-repair-{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
    - Commit in English, concise and meaningful.
    - Push and open a PR into main with an English title and description.
    - For `gh issue comment` / `gh pr create/edit/comment` use `--body-file` (or heredoc) to preserve newlines; do not pass `\n` via `--body`.
-   - Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (e.g., `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
-   - If no repository changes were needed, describe the work and results in a comment on Issue {{ envOr "ISSUE_NUMBER" "" }}.
+   - Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (e.g., `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) or `<redacted>`.
+   - If no repository changes were needed, describe the work and results in a comment on Issue {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}.
 
 PR description or Issue comment format:
 - English, Markdown.

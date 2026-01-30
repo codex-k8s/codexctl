@@ -42,6 +42,22 @@ func newPRReviewApplyCommand(opts *Options) *cobra.Command {
 		Short: "Commit Codex review changes for a PR and post environment links",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envCfg := prEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("pr") && envPresent("CODEXCTL_PR_NUMBER") {
+				prNumber = envCfg.PR
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("code-root-base") && envPresent("CODEXCTL_CODE_ROOT_BASE") {
+				codeRootBase = envCfg.CodeRootBase
+			}
+			if !cmd.Flags().Changed("lang") && envPresent("CODEXCTL_LANG") {
+				lang = envCfg.Lang
+			}
 
 			if prNumber <= 0 {
 				return fmt.Errorf("review-apply requires a positive --pr number")
@@ -51,10 +67,10 @@ func newPRReviewApplyCommand(opts *Options) *cobra.Command {
 			}
 
 			if codeRootBase == "" {
-				codeRootBase = os.Getenv("CODE_ROOT_BASE")
+				codeRootBase = os.Getenv("CODEXCTL_CODE_ROOT_BASE")
 			}
 			if strings.TrimSpace(codeRootBase) == "" {
-				return fmt.Errorf("review-apply requires --code-root-base or CODE_ROOT_BASE env")
+				return fmt.Errorf("review-apply requires --code-root-base or CODEXCTL_CODE_ROOT_BASE env")
 			}
 
 			repo := os.Getenv("GITHUB_REPOSITORY")
@@ -101,10 +117,8 @@ func newPRReviewApplyCommand(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&prNumber, "pr", 0, "Pull Request number to apply review changes for (required)")
-	_ = cmd.MarkFlagRequired("pr")
 	cmd.Flags().IntVar(&slot, "slot", 0, "AI environment slot number (required)")
-	_ = cmd.MarkFlagRequired("slot")
-	cmd.Flags().StringVar(&codeRootBase, "code-root-base", "", "Base path for slot workspaces (defaults to CODE_ROOT_BASE env)")
+	cmd.Flags().StringVar(&codeRootBase, "code-root-base", "", "Base path for slot workspaces (defaults to CODEXCTL_CODE_ROOT_BASE env)")
 	cmd.Flags().StringVar(&lang, "lang", "en", "Language for environment comment (en|ru)")
 
 	return cmd

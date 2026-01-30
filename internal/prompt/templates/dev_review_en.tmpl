@@ -1,5 +1,5 @@
-{{- $mode := toLower (default (envOr "PROMPT_MODE" "") "full") -}}
-{{- $continuation := envOr "PROMPT_CONTINUATION" "" -}}
+{{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
+{{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
 {{- if eq $mode "short" }}
 Continue working on the existing Pull Request in this Codex session.
 Your goal is to close all unresolved review comments (changes_requested), apply fixes, commit, push, and reply in the PR.
@@ -8,13 +8,13 @@ You may not ask for external help; everything you need is in the repository, doc
 Services run in development mode, so after code changes wait 2-3 seconds for services to restart in the same pods.
 The working branch already exists; do not switch branches and do not create new ones - only commit and push to the current PR branch.
 Commits must be in English. PR replies/final summary must be in English.
-Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (for example, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
+Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (for example, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) or `<redacted>`.
 
 Environment context:
 - Environment (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
-- Slot: {{ envOr "SLOT" "" }}
-- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
+- Slot: {{ envOr "CODEXCTL_SLOT" "" }}
+- PR number (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
 
 {{- if .ReviewComments }}
 
@@ -44,7 +44,7 @@ You are continuing work on an existing Pull Request in a dedicated Kubernetes de
 Your goal is to fully resolve a review with status `changes_requested`, close all unresolved comments,
 validate the system, and deliver the result via commits, push, and a final comment in the PR.
 Write replies and comments in the PR in English, except for artifacts that must be kept verbatim (commit messages, error text, and logs).
-Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (for example, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
+Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (for example, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) or `<redacted>`.
 {{- if ne $continuation "" }}
 Important: the environment was recreated, so the session is new, but work already exists.
 Treat this as a continuation: restore full context from Issues/PR/docs and apply review fixes.
@@ -64,9 +64,9 @@ Commits must be in English. PR replies/final summary must be in English.
 Environment context:
 - Environment (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
-- Slot: {{ envOr "SLOT" "" }}
-- PR number (PR_NUMBER): {{ envOr "PR_NUMBER" "" }}
-- Source Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+- Slot: {{ envOr "CODEXCTL_SLOT" "" }}
+- PR number (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
+- Source Issue (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 - The working directory inside the container is mounted with the project sources (often `/workspace`).
 
 Watch Issue labels and follow their intent (if set):
@@ -93,7 +93,7 @@ Available infrastructure and application services (may be incomplete):
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Attention: infrastructure is not ready (wait timeout/failed wait).
 - Diagnose and restore the infrastructure first (kubectl get/describe/logs, fixes/restarts).
@@ -129,7 +129,7 @@ Tools:
   - Apply: use filters `--only-services/--only-infra` (or `--skip-*`), never run `codexctl apply` without filters and never include the `codex` service.
 - `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
 - gh: read/comment PRs and reviews.
-- gh credentials: token is in CODEX_GH_PAT, username in CODEX_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- gh credentials: token is in CODEXCTL_GH_PAT, username in CODEXCTL_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: test HTTP endpoints (via Ingress/dev-grpc-gateway).
 - rg (ripgrep)
 - jq
@@ -150,14 +150,14 @@ Additional source of up-to-date information:
 Context to restore and review:
 - Read the requirements in `./AGENTS.md` and all related documents in the repository.
 - Repository slug is in `GITHUB_REPOSITORY` (for example, `owner/repo`).
-- PR number is in `PR_NUMBER`.
+- PR number is in `CODEXCTL_PR_NUMBER`.
 - Use:
-  - `gh pr view $PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
-  - `gh pr view $PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` for an overview.
-  - If needed: `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews` and
-    `gh api repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments` for detailed threads.
-- If `ISSUE_NUMBER` is set, fetch the source issue context:
-  - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$GITHUB_REPOSITORY"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$GITHUB_REPOSITORY"` for an overview.
+  - If needed: `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/reviews` and
+    `gh api repos/$GITHUB_REPOSITORY/pulls/$CODEXCTL_PR_NUMBER/comments` for detailed threads.
+- If `CODEXCTL_ISSUE_NUMBER` is set, fetch the source issue context:
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
 
 Your responsibilities:
 1) Understand the PR and remarks:

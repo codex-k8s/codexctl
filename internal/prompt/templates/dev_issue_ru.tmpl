@@ -17,8 +17,8 @@
 Контекст окружения:
 - Окружение (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
-- Слот: {{ envOr "SLOT" "" }}
-- Исходный Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+- Слот: {{ envOr "CODEXCTL_SLOT" "" }}
+- Исходный Issue (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 - Рабочая директория в контейнере смонтирована на исходники проекта.
 
 Следите за лейблами Issue, если они установлены, следует придерживаться требований:
@@ -45,7 +45,7 @@
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Внимание: инфраструктура окружения не готова (wait timeout/ошибка ожидания).
 Сначала диагностируй и восстанови, а уже затем переходи к Issue.
@@ -79,7 +79,7 @@
   - Применение: используйте фильтры `--only-services/--only-infra` (или `--skip-*`), не запускайте `codexctl apply` без фильтров и не включайте сервис `codex`.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
 - gh: чтение/комментирование Issues/PR, сбор контекста.
-- Доступы для gh: токен в CODEX_GH_PAT, логин в CODEX_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- Доступы для gh: токен в CODEXCTL_GH_PAT, логин в CODEXCTL_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: проверка HTTP‑эндпоинтов окружения.
 - rg (ripgrep): поиск по коду.
 - jq: разбор JSON.
@@ -101,7 +101,7 @@
 - Прочитайте требования в `./AGENTS.md` и всех связанных документах в репозитории.
 - Слаг репозитория доступен в `GITHUB_REPOSITORY` (например, `owner/repo`).
 - Получите полный контекст Issue через GitHub CLI:
-  - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
 - Изучите описание Issue, комментарии и метки, а также документацию проекта и релевантный код.
 - Если после изучения Issue, кода и документации понятно что требования неполные, есть противоречия или неопределённости, оставьте развернутый комментарий в Issue с вопросами и вариантами решений на выбор (3-5 вариантов).
 - После правок кода проверьте логи ключевых подов и нужные эндпоинты через kubectl/curl/httpie.
@@ -119,7 +119,7 @@
    - Проверить эндпоинты (если есть) через `curl`/`httpie`.
    - проверить изменения данных (БД/кеши/очереди) при необходимости.
 4) Доставить результат через GitHub:
-   - Работать в выделенной ветке (например, `codex/issue-$ISSUE_NUMBER`).
+   - Работать в выделенной ветке (например, `codex/issue-$CODEXCTL_ISSUE_NUMBER`).
    - Делать короткие, понятные коммиты на английском.
    - Запушить ветку и открыть Pull Request в `main`.
    - Описать PR на русском, кратко и по делу: что изменилось и как проверить.

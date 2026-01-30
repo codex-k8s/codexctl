@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/codex-k8s/codexctl/internal/ghoutput"
 )
 
 // newPlanCommand creates the "plan" group command with helpers for AI planning workflows.
@@ -28,9 +30,8 @@ func newPlanCommand(opts *Options) *cobra.Command {
 // for a given focus issue using the [ai-plan] label or AI-PLAN-PARENT marker in the body.
 func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 	var (
-		issue  int
-		repo   string
-		output string
+		issue int
+		repo  string
 	)
 
 	cmd := &cobra.Command{
@@ -38,6 +39,16 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 		Short: "Resolve root planning issue for a given focus issue",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envCfg := planEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("issue") && envPresent("CODEXCTL_ISSUE_NUMBER") {
+				issue = envCfg.Issue
+			}
+			if !cmd.Flags().Changed("repo") && envPresent("CODEXCTL_REPO") {
+				repo = envCfg.Repo
+			}
 
 			if issue <= 0 {
 				return fmt.Errorf("resolve-root requires a positive --issue number")
@@ -66,32 +77,20 @@ func newPlanResolveRootCommand(_ *Options) *cobra.Command {
 			if root == 0 {
 				return fmt.Errorf("unable to resolve root planning issue for focus issue %d", issue)
 			}
-
-			switch strings.ToLower(output) {
-			case "json":
-				type out struct {
-					Root  int `json:"root"`
-					Focus int `json:"focus"`
-				}
-				payload, _ := json.Marshal(out{Root: root, Focus: issue})
-				fmt.Println(string(payload))
-			case "kv":
-				fmt.Printf("root=%d\nfocus=%d\n", root, issue)
-			default:
-				logger.Info("resolved root planning issue",
-					"focus", issue,
-					"root", root,
-					"repo", repo,
-				)
+			writeErr := ghoutput.Write(map[string]string{
+				"root":  strconv.Itoa(root),
+				"focus": strconv.Itoa(issue),
+			})
+			if writeErr != nil {
+				return writeErr
 			}
+			fmt.Printf("root: %d\nfocus: %d\n", root, issue)
 			return nil
 		},
 	}
 
 	cmd.Flags().IntVar(&issue, "issue", 0, "Focus issue number to resolve the root planner for (required)")
-	_ = cmd.MarkFlagRequired("issue")
 	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository slug owner/repo (defaults to GITHUB_REPOSITORY)")
-	cmd.Flags().StringVar(&output, "output", "plain", "Output format: plain|json|kv")
 
 	return cmd
 }
@@ -108,7 +107,7 @@ type ghIssue struct {
 	Title string `json:"title"`
 	// State is the issue state (open/closed).
 	State string `json:"state"`
-	// Body is the raw markdown body.
+	// Body is the raw Markdown body.
 	Body string `json:"body"`
 	// URL is the canonical issue URL.
 	URL string `json:"url"`
@@ -127,7 +126,7 @@ type ghPR struct {
 // lookupGitHubToken finds a token from known environment variables.
 func lookupGitHubToken() (string, error) {
 	candidates := []string{
-		os.Getenv("CODEX_GH_PAT"),
+		os.Getenv("CODEXCTL_GH_PAT"),
 		os.Getenv("GH_TOKEN"),
 		os.Getenv("GITHUB_TOKEN"),
 	}
@@ -136,7 +135,7 @@ func lookupGitHubToken() (string, error) {
 			return v, nil
 		}
 	}
-	return "", fmt.Errorf("GitHub token is required; set CODEX_GH_PAT or GH_TOKEN or GITHUB_TOKEN")
+	return "", fmt.Errorf("GitHub token is required; set CODEXCTL_GH_PAT or GH_TOKEN or GITHUB_TOKEN")
 }
 
 // fetchIssueJSON returns issue data using the gh CLI.

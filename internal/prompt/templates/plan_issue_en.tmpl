@@ -21,8 +21,8 @@ Allowed actions:
 Environment context:
 - Environment (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
-- Slot: {{ envOr "SLOT" "" }}
-- Source Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+- Slot: {{ envOr "CODEXCTL_SLOT" "" }}
+- Source Issue (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 - The working directory inside the container is mounted with the project sources.
 {{- if .Codex.ProjectContext }}
 
@@ -35,7 +35,7 @@ Available infrastructure and application services (may be incomplete):
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Attention: infrastructure is not ready (wait timeout / failed wait).
 - Capture this in the plan and add a sub-task for diagnosis/recovery.
@@ -70,7 +70,7 @@ Core tools you can use:
   - Do not run apply in planning mode; if you must show an example, mention filters and avoid full apply and the `codex` service.
 - `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
 - gh: read/comment Issues/PRs, create and edit Issues (only if requested).
-- gh credentials: token is in CODEX_GH_PAT, username in CODEX_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- gh credentials: token is in CODEXCTL_GH_PAT, username in CODEXCTL_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: read HTTP endpoints of the environment.
 - rg (ripgrep): search the codebase.
 - jq: parse JSON.
@@ -92,7 +92,7 @@ Source Issue for planning:
 - Read the requirements in `./AGENTS.md` and related documents.
 - The repository slug is available in `GITHUB_REPOSITORY` (for example, `owner/repo`).
 - Fetch full Issue context:
-  - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
 - Based on the description, comments and labels, understand what problem the user wants to solve.
 - Analyze the repository structure and key parts of the code to estimate the real scope of work.
 - If needed, inspect logs/metrics/config/DB in the dedicated environment to understand the current state.
@@ -116,7 +116,7 @@ Planning logic by labels (multiple labels may be present at the same time):
 If you create new Issues:
 - Every created Issue MUST contain this marker line (refers to the current planning Issue):
 
-  `AI-PLAN-PARENT: #{{ envOr "ISSUE_NUMBER" "" }}`
+  `AI-PLAN-PARENT: #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`
 
 - Do not automatically add `[ai-dev]` or `[ai-plan]` labels.
 - If the source Issue has `feature`/`bug`/`doc`/`debt` labels, apply the same labels to all Issues you create during planning (including epics).
@@ -130,7 +130,7 @@ Communication of results:
   - dependencies, risks, and assumptions;
   - questions and suggestions (if any).
 - For `gh issue comment`, use `--body-file` (or a heredoc into a file) to preserve newlines; do not pass `\n` via `--body`.
-- Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (for example, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) or `<redacted>`.
+- Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (for example, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) or `<redacted>`.
 
 If requirements are insufficient:
 - Formulate concrete clarification questions and include them in the final comment.

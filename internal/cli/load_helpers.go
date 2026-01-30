@@ -11,12 +11,25 @@ import (
 
 // parseInlineVarsAndFiles reads inline vars and optional var-file flags.
 func parseInlineVarsAndFiles(cmd *cobra.Command) (env.Vars, []string, error) {
-	inlineVars, err := env.ParseInlineVars(cmd.Flag("vars").Value.String())
+	rawVars := cmd.Flag("vars").Value.String()
+	rawVarFile := cmd.Flag("var-file").Value.String()
+	cfg := varsEnv{}
+	if err := parseEnv(&cfg); err != nil {
+		return nil, nil, err
+	}
+	if !cmd.Flags().Changed("vars") && envPresent("CODEXCTL_VARS") {
+		rawVars = cfg.Vars
+	}
+	if !cmd.Flags().Changed("var-file") && envPresent("CODEXCTL_VAR_FILE") {
+		rawVarFile = cfg.VarFile
+	}
+
+	inlineVars, err := env.ParseInlineVars(rawVars)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	varFile := cmd.Flag("var-file").Value.String()
+	varFile := rawVarFile
 	var varFiles []string
 	if varFile != "" {
 		varFiles = append(varFiles, varFile)

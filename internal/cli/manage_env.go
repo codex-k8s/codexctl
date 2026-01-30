@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -51,6 +50,25 @@ func newManageEnvCleanupCommand(opts *Options) *cobra.Command {
 		Short: "Destroy an environment for the given selector and optionally remove its state",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envCfg := manageEnvEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("issue") && envPresent("CODEXCTL_ISSUE_NUMBER") {
+				issue = envCfg.Issue
+			}
+			if !cmd.Flags().Changed("pr") && envPresent("CODEXCTL_PR_NUMBER") {
+				pr = envCfg.PR
+			}
+			if !cmd.Flags().Changed("all") && envPresent("CODEXCTL_ALL") {
+				cleanupAll = envCfg.All
+			}
+			if !cmd.Flags().Changed("with-configmap") && envPresent("CODEXCTL_WITH_CONFIGMAP") {
+				withConfigMap = envCfg.WithConfigMap
+			}
 
 			if !cleanupAll && issue <= 0 && pr <= 0 && slot <= 0 {
 				return fmt.Errorf("at least one of --issue, --pr or --slot must be specified")
@@ -195,6 +213,19 @@ func newManageEnvSetCommand(opts *Options) *cobra.Command {
 		Short: "Update metadata (issue/pr) for a slot",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := LoggerFromContext(cmd.Context())
+			envCfg := manageEnvEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("issue") && envPresent("CODEXCTL_ISSUE_NUMBER") {
+				issue = envCfg.Issue
+			}
+			if !cmd.Flags().Changed("pr") && envPresent("CODEXCTL_PR_NUMBER") {
+				pr = envCfg.PR
+			}
 			if slot <= 0 {
 				return fmt.Errorf("slot must be >0")
 			}
@@ -230,6 +261,16 @@ func newManageEnvCommentCommand(opts *Options) *cobra.Command {
 		Use:   "comment",
 		Short: "Render environment links for PR/Issue comments",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			envCfg := manageEnvEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("slot") && envPresent("CODEXCTL_SLOT") {
+				slot = envCfg.Slot
+			}
+			if !cmd.Flags().Changed("lang") && envPresent("CODEXCTL_LANG") {
+				lang = envCfg.Lang
+			}
 			if slot <= 0 {
 				return fmt.Errorf("slot must be >0")
 			}
@@ -383,29 +424,4 @@ func findMatchingEnvRecord(
 	}
 
 	return nil, nil
-}
-
-// printResolveOutput prints a slot resolution result in plain or JSON format.
-func printResolveOutput(rec state.EnvRecord, output string, logger *slog.Logger) error {
-	switch strings.ToLower(output) {
-	case "json":
-		type out struct {
-			Slot      int    `json:"slot"`
-			Namespace string `json:"namespace"`
-			Env       string `json:"env"`
-		}
-		payload, _ := json.Marshal(out{Slot: rec.Slot, Namespace: rec.Namespace, Env: rec.Env})
-		fmt.Println(string(payload))
-	case "kv":
-		fmt.Printf("slot=%d\nnamespace=%s\nenv=%s\n", rec.Slot, rec.Namespace, rec.Env)
-	default:
-		logger.Info("resolved slot",
-			"slot", rec.Slot,
-			"namespace", rec.Namespace,
-			"env", rec.Env,
-			"issue", rec.Issue,
-			"pr", rec.PR,
-		)
-	}
-	return nil
 }

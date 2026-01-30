@@ -21,8 +21,8 @@
 Контекст окружения:
 - Окружение (env): {{ .Env }}
 - Namespace: {{ .Namespace }}
-- Slot: {{ envOr "SLOT" "" }}
-- Исходный Issue (ISSUE_NUMBER): {{ envOr "ISSUE_NUMBER" "" }}
+- Slot: {{ envOr "CODEXCTL_SLOT" "" }}
+- Исходный Issue (CODEXCTL_ISSUE_NUMBER): {{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}
 - Рабочая директория в контейнере смонтирована на исходники проекта.
 {{- if .Codex.ProjectContext }}
 
@@ -35,7 +35,7 @@
 {{ .Codex.ServicesOverview }}
 {{- end }}
 
-{{- if eq (envOr "INFRA_UNHEALTHY" "0") "1" }}
+{{- if eq (envOr "CODEXCTL_INFRA_UNHEALTHY" "0") "1" }}
 
 Внимание: инфраструктура не готова (таймаут/ошибка ожидания).
 - Отразите это в плане и добавьте подзадачу по диагностике/восстановлению.
@@ -70,7 +70,7 @@
   - Применение в режиме планирования не выполняй; если требуется показать пример, указывай фильтры и избегай полного apply и сервиса `codex`.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
 - gh: чтение/комментирование Issues/PR, создание и редактирование Issues (только если попросили).
-- Доступы для gh: токен в CODEX_GH_PAT, логин в CODEX_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEX_GH_PAT" | gh auth login --with-token`.
+- Доступы для gh: токен в CODEXCTL_GH_PAT, логин в CODEXCTL_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: чтение HTTP‑эндпоинтов окружения.
 - rg (ripgrep): поиск по коду.
 - jq: разбор JSON.
@@ -92,7 +92,7 @@
 - Прочитайте требования в `./AGENTS.md` и связанные документы.
 - Слаг репозитория доступен в `GITHUB_REPOSITORY` (например, `owner/repo`).
 - Получите полный контекст Issue:
-  - `gh issue view $ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
+  - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$GITHUB_REPOSITORY"`.
 - По описанию, комментариям и меткам поймите, какую задачу хочет решить пользователь.
 - Проанализируйте структуру репозитория и ключевые части кода, чтобы оценить реальный объём работ.
 - Если нужно, изучите логи/метрики/конфигурации/БД в выделенном окружении для понимания текущего состояния.
@@ -116,7 +116,7 @@
 Если создаёте новые Issues:
 - Каждый созданный Issue ДОЛЖЕН содержать отдельной строкой маркер (ссылается на текущий Issue планирования):
 
-  `AI-PLAN-PARENT: #{{ envOr "ISSUE_NUMBER" "" }}`
+  `AI-PLAN-PARENT: #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`
 
 - Не добавляйте метки `[ai-dev]` или `[ai-plan]` автоматически.
 - Если на исходном Issue есть лейблы `feature`/`bug`/`doc`/`debt`, то эти же лейблы нужно выставлять на все создаваемые в рамках планирования Issues (включая эпики).
@@ -130,7 +130,7 @@
   - зависимости, риски и допущения;
   - вопросы и предложения (если есть).
 - Для `gh issue comment` используйте `--body-file` (или here‑doc в файл), чтобы сохранить переводы строк; не передавайте `\n` в `--body`.
-- Не публикуйте секреты/токены/пароли в комментариях и примерах команд. Маскируйте их, подставляя переменные окружения (например, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEX_GH_PAT`, `$TOKEN`) или `<redacted>`.
+- Не публикуйте секреты/токены/пароли в комментариях и примерах команд. Маскируйте их, подставляя переменные окружения (например, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) или `<redacted>`.
 
 Если требований недостаточно:
 - Сформулируйте конкретные вопросы и добавьте их в итоговый комментарий.
