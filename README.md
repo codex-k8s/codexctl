@@ -61,11 +61,11 @@ This file is the single source of truth for `codexctl`, GitHub Actions and dev-A
 
 `services.yaml` and all referenced manifests are rendered using Go templates. In templates, you have access to:
 
-- `{{ .Env }}` — current environment (`dev`, `staging`, `ai`, `staging_repair`);
+- `{{ .Env }}` — current environment (`dev`, `staging`, `ai`, `ai-repair`);
 - `{{ .Namespace }}` — Kubernetes namespace;
 - `{{ .Project }}` — project name (`codex-project`);
 - `{{ .Slot }}` — slot number for a dev-AI environment;
-- `{{ .BaseDomain }}` — map of base domains (`dev`, `staging`, `ai`, `staging_repair`);
+- `{{ .BaseDomain }}` — map of base domains (`dev`, `staging`, `ai`, `ai-repair`);
 - `{{ .Versions }}` — map of service/image versions;
 - helper functions like `envOr`, `default`, `ternary`, `join`, etc.
 
@@ -83,7 +83,7 @@ The same context is used by:
 - `staging` — staging cluster (CI/CD, close to production);
 - `ai` — dev-AI slots: isolated namespaces of the form `<project>-dev-<slot>` (for example, `codex-project-dev-<slot>`),
   with domains like `dev-<slot>.staging.<domain>` where Codex agents work on issues/PRs.
-- `staging_repair` — a dedicated namespace with a Codex Pod and RBAC access to staging (for repairs).
+- `ai-repair` — a dedicated namespace with a Codex Pod and RBAC access to staging (for repairs).
 
 Slots (`slot`) are numeric identifiers of dev-AI environments managed by `codexctl ci ensure-slot/ensure-ready`. For each
 slot `codexctl` creates and maintains:
@@ -212,7 +212,7 @@ Configuration of the Codex agent integration:
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — timeouts for `prompt run` and waiting for rollouts.
 
 These fields are used when rendering built-in prompts (`dev_issue_*`, `plan_issue_*`, `plan_review_*`,
-`dev_review_*`, `staging_repair_*`) and the Codex config:
+`dev_review_*`, `ai-repair_*`) and the Codex config:
 
 - `internal/prompt/templates/*.tmpl` — prompt templates;
 - `internal/prompt/templates/config_default.toml` — default Codex config.

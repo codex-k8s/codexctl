@@ -61,11 +61,11 @@ go install github.com/codex-k8s/codexctl/cmd/codexctl@v0.1.0
 
 `services.yaml` и все подключаемые манифесты рендерятся через Go‑шаблоны. В шаблонах доступны:
 
-- `{{ .Env }}` — текущее окружение (`dev`, `staging`, `ai`, `staging_repair`);
+- `{{ .Env }}` — текущее окружение (`dev`, `staging`, `ai`, `ai-repair`);
 - `{{ .Namespace }}` — Kubernetes namespace;
 - `{{ .Project }}` — имя проекта (`codex-project`);
 - `{{ .Slot }}` — номер слота для dev‑AI окружения;
-- `{{ .BaseDomain }}` — карта базовых доменов (`dev`, `staging`, `ai`, `staging_repair`);
+- `{{ .BaseDomain }}` — карта базовых доменов (`dev`, `staging`, `ai`, `ai-repair`);
 - `{{ .Versions }}` — карта версий сервисов/образов;
 - функции `envOr`, `default`, `ternary`, `join` и т.д.
 
@@ -83,7 +83,7 @@ go install github.com/codex-k8s/codexctl/cmd/codexctl@v0.1.0
 - `staging` — стейджинг‑кластер (CI/CD, приближённый к продакшену);
 - `ai` — dev‑AI слоты: изолированные namespace’ы вида `<project>-dev-<slot>` (например, `codex-project-dev-<slot>`),
   с доменами `dev-<slot>.staging.<domain>`, в которых работают Codex‑агенты над задачами/PR.
-- `staging_repair` — отдельный namespace с Pod’ом Codex и RBAC‑доступом к namespace staging (для восстановления).
+- `ai-repair` — отдельный namespace с Pod’ом Codex и RBAC‑доступом к namespace staging (для восстановления).
 
 Слоты (`slot`) — это числовые идентификаторы dev‑AI окружений, которыми управляет `codexctl ci ensure-slot/ensure-ready`. Для каждого
 слота создаётся и поддерживается:
@@ -212,7 +212,7 @@ codexctl apply        --env "$ENV" --wait --preflight
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — таймауты для `prompt run` и ожидания rollout’ов.
 
 Эти поля используются при рендере встроенных промптов (`dev_issue_*`, `plan_issue_*`, `plan_review_*`,
-`dev_review_*`, `staging_repair_*`) и конфига Codex:
+`dev_review_*`, `ai-repair_*`) и конфига Codex:
 
 - `internal/prompt/templates/*.tmpl` — шаблоны промптов;
 - `internal/prompt/templates/config_default.toml` — дефолтный конфиг Codex.
@@ -597,7 +597,7 @@ jobs:
 2. `ci ensure-ready --env ai --slot <SLOT> --prepare-images --apply` — развернуть инфраструктуру и сервисы.
 3. `prompt run --env ai --slot <SLOT> --kind dev_issue` — запустить Codex‑агента.
 4. `manage-env cleanup --env ai --issue <N>` — очистить слот (по необходимости).
-5. `manage-env cleanup --env staging_repair --all --with-configmap` — принудительно очистить все слоты окружения `staging_repair` (например, если восстановление зависло).
+5. `manage-env cleanup --env ai-repair --all --with-configmap` — принудительно очистить все слоты окружения `ai-repair` (например, если восстановление зависло).
 
 ### 🔑 7.3. Секреты и PAT для GitHub‑бота
 

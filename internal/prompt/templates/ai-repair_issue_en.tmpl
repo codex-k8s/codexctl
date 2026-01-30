@@ -67,7 +67,7 @@ Current task:
    - Ensure critical services reach Ready/Available.
    - Test key endpoints via curl/httpie.
 4) Deliver via GitHub (if repo changes were made):
-   - Work in branch `codex/staging-repair-{{ envOr "ISSUE_NUMBER" "" }}`.
+   - Work in branch `codex/ai-repair-{{ envOr "ISSUE_NUMBER" "" }}`.
    - Commit in English, concise and meaningful.
    - Push and open a PR into main with a Russian title and description.
    - For `gh issue comment` / `gh pr create/edit/comment` use `--body-file` (or heredoc) to preserve newlines; do not pass `\n` via `--body`.

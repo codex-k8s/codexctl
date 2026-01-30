@@ -17,8 +17,8 @@ const (
 	KindDevReview           = "dev_review"
 	KindPlanIssue           = "plan_issue"
 	KindPlanReview          = "plan_review"
-	KindStagingRepairIssue  = "staging_repair_issue"
-	KindStagingRepairReview = "staging_repair_review"
+	KindStagingRepairIssue  = "ai-repair_issue"
+	KindStagingRepairReview = "ai-repair_review"
 
 	defaultPromptLang          = "en"
 	builtinTemplateDir         = "templates"

@@ -333,10 +333,10 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 		if ctx.Namespace == "" && ctx.Env == "ai" && ctx.Project != "" && ctx.Slot > 0 {
 			ctx.Namespace = fmt.Sprintf("%s-dev-%d", ctx.Project, ctx.Slot)
 		}
-		if ctx.Namespace == "" && ctx.Env == "staging_repair" && ctx.Project != "" && ctx.Slot > 0 {
-			ctx.Namespace = fmt.Sprintf("%s-staging-repair-%d", ctx.Project, ctx.Slot)
+		if ctx.Namespace == "" && ctx.Env == "ai-repair" && ctx.Project != "" && ctx.Slot > 0 {
+			ctx.Namespace = fmt.Sprintf("%s-ai-repair-%d", ctx.Project, ctx.Slot)
 		}
-		if ctx.Namespace == "" && ctx.Project != "" && ctx.Env != "ai" && ctx.Env != "staging_repair" {
+		if ctx.Namespace == "" && ctx.Project != "" && ctx.Env != "ai" && ctx.Env != "ai-repair" {
 			ctx.Namespace = fmt.Sprintf("%s-%s", ctx.Project, ctx.Env)
 		}
 	}
@@ -531,10 +531,10 @@ func ResolveNamespace(cfg *StackConfig, ctx TemplateContext, envName string) (st
 	if envName == "ai" && ctx.Project != "" && ctx.Slot > 0 {
 		return fmt.Sprintf("%s-dev-%d", ctx.Project, ctx.Slot), nil
 	}
-	// For staging_repair environments, derive namespace directly from project and slot
+	// For ai-repair environments, derive namespace directly from project and slot
 	// to ensure stable mapping even when services.yaml is loaded with slot=0.
-	if envName == "staging_repair" && ctx.Project != "" && ctx.Slot > 0 {
-		return fmt.Sprintf("%s-staging-repair-%d", ctx.Project, ctx.Slot), nil
+	if envName == "ai-repair" && ctx.Project != "" && ctx.Slot > 0 {
+		return fmt.Sprintf("%s-ai-repair-%d", ctx.Project, ctx.Slot), nil
 	}
 	if cfg == nil || cfg.Namespace == nil {
 		return "", nil
