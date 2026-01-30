@@ -111,6 +111,23 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 
 			kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
 
+			if raw := strings.TrimSpace(ctxData.EnvMap["CODEX_MODEL"]); raw != "" {
+				model, err := normalizeModel(raw)
+				if err != nil {
+					return err
+				}
+				ctxData.Codex.Model = model
+				stackCfg.Codex.Model = model
+			}
+			if raw := strings.TrimSpace(ctxData.EnvMap["CODEX_MODEL_REASONING_EFFORT"]); raw != "" {
+				effort, err := normalizeReasoningEffort(raw)
+				if err != nil {
+					return err
+				}
+				ctxData.Codex.ModelReasoningEffort = effort
+				stackCfg.Codex.ModelReasoningEffort = effort
+			}
+
 			applyIssueCodexOverrides(cmd.Context(), logger, envName, issue, pr, stackCfg, &ctxData)
 			applyIssueContext(cmd.Context(), logger, envName, issue, pr, ctxData.EnvMap["FOCUS_ISSUE_NUMBER"], &ctxData)
 			if strings.TrimSpace(modelOverride) != "" {
