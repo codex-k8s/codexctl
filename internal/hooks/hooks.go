@@ -414,7 +414,7 @@ func (e *Executor) runCheckDevHostPorts(ctx context.Context, step config.HookSte
 	return nil
 }
 
-// runReuseDevTLSSecret syncs a dev TLS secret with staging for reuse.
+// runReuseDevTLSSecret syncs a dev TLS secret with ai-staging for reuse.
 func (e *Executor) runReuseDevTLSSecret(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	if stepCtx.KubeClient == nil {
 		return fmt.Errorf("codex.reuse-dev-tls-secret requires a Kubernetes client")
@@ -445,14 +445,14 @@ func (e *Executor) runReuseDevTLSSecret(ctx context.Context, step config.HookSte
 		}
 	}
 	if stagingNS == "" {
-		stagingNS = resolveNamespaceForEnv(stepCtx.Stack, stepCtx.Template, "staging")
+		stagingNS = resolveNamespaceForEnv(stepCtx.Stack, stepCtx.Template, "ai-staging")
 	}
 	if stagingNS == "" {
 		return nil
 	}
 
 	if err := copySecret(ctx, stepCtx.KubeClient, stagingNS, ns, secretName); err != nil {
-		e.logger.Warn("failed to copy TLS secret from staging", "secret", secretName, "error", err)
+		e.logger.Warn("failed to copy TLS secret from ai-staging", "secret", secretName, "error", err)
 	}
 
 	ready := waitForSecret(ctx, stepCtx.KubeClient, ns, secretName, 120, 2*time.Second)
@@ -462,7 +462,7 @@ func (e *Executor) runReuseDevTLSSecret(ctx context.Context, step config.HookSte
 	}
 
 	if err := copySecret(ctx, stepCtx.KubeClient, ns, stagingNS, secretName); err != nil {
-		e.logger.Warn("failed to persist TLS secret into staging", "secret", secretName, "error", err)
+		e.logger.Warn("failed to persist TLS secret into ai-staging", "secret", secretName, "error", err)
 	}
 	return nil
 }
@@ -575,8 +575,8 @@ func resolveNamespaceForEnv(stack *config.StackConfig, baseCtx config.TemplateCo
 		return ""
 	}
 	switch envName {
-	case "staging":
-		return fmt.Sprintf("%s-staging", baseCtx.Project)
+	case "ai-staging":
+		return fmt.Sprintf("%s-ai-staging", baseCtx.Project)
 	case "dev":
 		return fmt.Sprintf("%s-dev", baseCtx.Project)
 	default:

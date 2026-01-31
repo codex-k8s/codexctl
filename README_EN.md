@@ -23,7 +23,7 @@ file, `services.yaml`. It simplifies:
 
 In essence, it is an “orchestrator on top of `kubectl` and templates” that understands:
 
-- environments (`dev`, `staging`, `ai`, `ai-repair`);
+- environments (`dev`, `ai-staging`, `ai`, `ai-repair`);
 - slots (AI environments for tasks/PRs);
 - the project layout (infrastructure, services, Codex agent Pod).
 
@@ -118,11 +118,11 @@ This file is the single source of truth for `codexctl`, GitHub Actions, and AI-d
 
 `services.yaml` and all included manifests are rendered via Go templates. In templates you can use:
 
-- `{{ .Env }}` — the current environment (`dev`, `staging`, `ai`, `ai-repair`);
+- `{{ .Env }}` — the current environment (`dev`, `ai-staging`, `ai`, `ai-repair`);
 - `{{ .Namespace }}` — the Kubernetes namespace;
 - `{{ .Project }}` — the project name (`codex-project`);
 - `{{ .Slot }}` — the slot number for an AI-dev environment;
-- `{{ .BaseDomain }}` — a map of base domains (`dev`, `staging`, `ai`, `ai-repair`);
+- `{{ .BaseDomain }}` — a map of base domains (`dev`, `ai-staging`, `ai`, `ai-repair`);
 - `{{ .Versions }}` — a map of service/image versions;
 - functions `envOr`, `default`, `ternary`, `join`, etc.
 
@@ -137,10 +137,10 @@ The same context is also used by:
 `codexctl` works with environment types:
 
 - `dev` — a developer’s local environment (one namespace);
-- `staging` — a staging cluster (CI/CD, close to production);
+- `ai-staging` — a ai-staging cluster (CI/CD, close to production);
 - `ai` — AI-dev slots: isolated namespaces like `<project>-dev-<slot>` (for example, `codex-project-dev-<slot>`),
-  with domains `dev-<slot>.staging.<domain>`, where Codex agents work on tasks/PRs.
-- `ai-repair` — a separate namespace with a Codex Pod and RBAC access to the staging namespace (for recovery/repair).
+  with domains `dev-<slot>.ai-staging.<domain>`, where Codex agents work on tasks/PRs.
+- `ai-repair` — a separate namespace with a Codex Pod and RBAC access to the ai-staging namespace (for recovery/repair).
 
 Slots (`slot`) are numeric identifiers for AI-dev environments managed by `codexctl ci ensure-slot/ensure-ready`. For each
 slot, the following is created and maintained:
@@ -179,7 +179,7 @@ This project uses two classes of labels:
 1) **Trigger labels (workflow labels)** — control which type of agent/session will be started:
 - `[ai-plan]` — planning mode (the agent prepares a plan/Issue structure, without PRs and commits);
 - `[ai-dev]` — development mode (the agent changes code, makes commits, and opens a PR);
-- `[ai-repair]` — environment recovery/repair mode (staging/infrastructure) and a PR if needed.
+- `[ai-repair]` — environment recovery/repair mode (ai-staging/infrastructure) and a PR if needed.
 
 > Important: the agent **must not** add trigger labels `[ai-dev]`, `[ai-plan]`, `[ai-repair]` by itself unless the user explicitly asked for it.
 
@@ -223,7 +223,7 @@ The simplest example (in the current format; see also `services.yaml` in https:/
 ```yaml
 # {{- $codeRootBase := envOr "CODEXCTL_CODE_ROOT_BASE" "" -}}
 # {{- $slotCodeRoot := default $codeRootBase (printf "%s/slots" .ProjectRoot) -}}
-# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/staging/src" $codeRootBase) "") .ProjectRoot -}}
+# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/ai-staging/src" $codeRootBase) "") .ProjectRoot -}}
 # {{- $dataRoot := default (envOr "CODEXCTL_DATA_ROOT" "") (printf "%s/.data" .ProjectRoot) -}}
 
 project: project-example
@@ -249,14 +249,14 @@ codex:
 
 baseDomain:
   dev: '{{ envOr "BASE_DOMAIN_DEV" "dev.example-domain.ru" }}'
-  staging: '{{ envOr "BASE_DOMAIN_STAGING" "staging.example-domain.ru" }}'
-  ai: '{{ envOr "BASE_DOMAIN_AI" (envOr "BASE_DOMAIN_STAGING" "staging.example-domain.ru") }}'
-  ai-repair: '{{ envOr "BASE_DOMAIN_STAGING" "staging.example-domain.ru" }}'
+  ai-staging: '{{ envOr "BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru" }}'
+  ai: '{{ envOr "BASE_DOMAIN_AI" (envOr "BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru") }}'
+  ai-repair: '{{ envOr "BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru" }}'
 
 namespace:
   patterns:
     dev: "{{ .Project }}-dev"
-    staging: "{{ .Project }}-staging"
+    ai-staging: "{{ .Project }}-ai-staging"
     ai: "{{ .Project }}-dev-{{ .Slot }}"
     ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
 
@@ -276,14 +276,14 @@ environments:
   dev:
     kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
-  staging:
+  ai-staging:
     kubeconfig: "/home/runner/.kube/microk8s.config"
     imagePullPolicy: Always
   ai:
-    from: "staging"
+    from: "ai-staging"
     imagePullPolicy: IfNotPresent
   ai-repair:
-    from: "staging"
+    from: "ai-staging"
     imagePullPolicy: IfNotPresent
 
 images:
@@ -295,7 +295,7 @@ images:
 
 infrastructure:
   - name: namespace-and-config
-    when: '{{ or (eq .Env "dev") (eq .Env "staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
+    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
     manifests:
       - path: deploy/namespace.yaml
       - path: deploy/configmap.yaml
@@ -318,10 +318,10 @@ In a real project, blocks will be richer (versions, hooks, overlays), but the ba
 
 ### 🔁 2.3. Base deployment cycle
 
-For any environment (`dev`, `staging`, `ai`, `ai-repair`), the cycle is the same:
+For any environment (`dev`, `ai-staging`, `ai`, `ai-repair`), the cycle is the same:
 
 ```bash
-export CODEXCTL_ENV=staging   # or dev/ai
+export CODEXCTL_ENV=ai-staging   # or dev/ai
 # for ai also set: CODEXCTL_SLOT=<slot>
 
 codexctl images mirror    # if needed
@@ -380,14 +380,14 @@ You can override:
 ```yaml
 baseDomain:
   dev: "dev.codex-project.local"
-  staging: "staging.codex-project.local"
-  ai: "staging.codex-project.local"
-  ai-repair: "staging.codex-project.local"
+  ai-staging: "ai-staging.codex-project.local"
+  ai: "ai-staging.codex-project.local"
+  ai-repair: "ai-staging.codex-project.local"
 
 namespace:
   patterns:
     dev: "{{ .Project }}-dev"
-    staging: "{{ .Project }}-staging"
+    ai-staging: "{{ .Project }}-ai-staging"
     ai: "{{ .Project }}-dev-{{ .Slot }}"
     ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
 ```
@@ -407,7 +407,7 @@ environments:
       enabled: true
       name: "project-example-registry"
       port: 32000
-  staging:
+  ai-staging:
     kubeconfig: "/home/runner/.kube/microk8s.config"
     imagePullPolicy: Always
     localRegistry:
@@ -415,14 +415,14 @@ environments:
       name: "project-example-registry"
       port: 32000
   ai:
-    from: "staging"
+    from: "ai-staging"
     imagePullPolicy: IfNotPresent
   ai-repair:
-    from: "staging"
+    from: "ai-staging"
     imagePullPolicy: IfNotPresent
 ```
 
-- `from` allows inheriting settings (e.g. `ai` from `staging`).
+- `from` allows inheriting settings (e.g. `ai` from `ai-staging`).
 - `localRegistry` describes a local registry to which images will be pushed by `images build`.
 
 ### 🖼️ 3.5. `images`
@@ -439,7 +439,7 @@ images:
   chat-backend:
     type: build
     repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
-    tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
+    tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "ai-staging" .Env) (index .Versions "chat-backend") }}'
     dockerfile: 'services/chat_backend/Dockerfile'
     context: 'services/chat_backend'
     buildArgs:
@@ -457,14 +457,14 @@ A list of infrastructure services:
 ```yaml
 infrastructure:
   - name: namespace-and-config
-    when: '{{ or (eq .Env "dev") (eq .Env "staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
+    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
     manifests:
       - path: deploy/namespace.yaml
       - path: deploy/configmap.yaml
       - path: deploy/secret.yaml
 
   - name: data-services
-    when: '{{ or (eq .Env "dev") (eq .Env "staging") (eq .Env "ai") }}'
+    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") }}'
     manifests:
       - path: deploy/postgres.service.yaml
       - path: deploy/redis.service.yaml
@@ -492,7 +492,7 @@ A list of applications:
 ```yaml
 # {{- $codeRootBase := envOr "CODEXCTL_CODE_ROOT_BASE" "" -}}
 # {{- $slotCodeRoot := default $codeRootBase (printf "%s/slots" .ProjectRoot) -}}
-# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/staging/src" $codeRootBase) "") .ProjectRoot -}}
+# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/ai-staging/src" $codeRootBase) "") .ProjectRoot -}}
 
 services:
   - name: chat-backend
@@ -500,14 +500,14 @@ services:
       - path: services/chat_backend/deploy.yaml
     image:
       repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
-      tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
+      tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "ai-staging" .Env) (index .Versions "chat-backend") }}'
     overlays:
       dev:
         hostMounts:
           - name: go-src
             hostPath: "{{ .ProjectRoot }}/services/chat_backend"
             mountPath: "/app"
-      staging:
+      ai-staging:
         hostMounts:
           - name: go-src
             hostPath: '{{ printf "%s/services/chat_backend" $stagingCodeRoot }}'
@@ -533,8 +533,8 @@ services:
 
 ### ☸️ 4.1. `codexctl apply`
 ```bash
-# staging (example for project-example)
-export CODEXCTL_ENV=staging
+# ai-staging (example for project-example)
+export CODEXCTL_ENV=ai-staging
 codexctl apply \
   --only-infra namespace-and-config,data-services,observability,cluster-dns,tls-issuer,echo-probe \
   --wait --preflight
@@ -575,7 +575,7 @@ cluster-scope resources and local port checks (see built-in prompts `*_issue_*.t
 Renders manifests without applying them:
 
 ```bash
-export CODEXCTL_ENV=staging
+export CODEXCTL_ENV=ai-staging
 codexctl render \
   --only-services web-frontend
 ```
@@ -589,7 +589,7 @@ codexctl render \
 You can provide values via `CODEXCTL_*` env vars; flags take precedence.
 
 - `CODEXCTL_CONFIG` / `--config, -c` — path to `services.yaml` (default: `services.yaml` in the current directory).
-- `CODEXCTL_ENV` / `--env` — environment name (`dev`, `staging`, `ai`, `ai-repair`).
+- `CODEXCTL_ENV` / `--env` — environment name (`dev`, `ai-staging`, `ai`, `ai-repair`).
 - `CODEXCTL_NAMESPACE` / `--namespace` — explicit namespace override (usually not needed).
 - `CODEXCTL_LOG_LEVEL` / `--log-level` — log level (`debug`, `info`, `warn`, `error`).
 
@@ -633,14 +633,14 @@ Subcommands:
 - `images mirror` — mirrors `images.type=external` to a local registry:
 
   ```bash
-  export CODEXCTL_ENV=staging
+  export CODEXCTL_ENV=ai-staging
   codexctl images mirror
   ```
 
 - `images build` — builds and pushes `images.type=build`:
 
   ```bash
-  export CODEXCTL_ENV=staging
+  export CODEXCTL_ENV=ai-staging
   codexctl images build
   ```
 
@@ -758,7 +758,7 @@ Common variables:
 - `REGISTRY_HOST` — image registry host;
 - `CODEXCTL_CODE_ROOT_BASE` — base path to source directories (on the node/in CI), used to compute:
   - `slotCodeRoot` (e.g. `.../slots/<slot>/src/...`) and
-  - `stagingCodeRoot` (e.g. `.../staging/src/...`),
+  - `stagingCodeRoot` (e.g. `.../ai-staging/src/...`),
   which are then used in `services.*.overlays.*.hostMounts` (see header comments in `services.yaml`).
 - `CODEXCTL_DATA_ROOT` — base path to `.data` with Postgres/Redis/cache/etc. data (used in `dataPaths.root` and `dataPaths.envDir`).
   It is cleaned up by `manage-env cleanup` with `CODEXCTL_WITH_CONFIGMAP=true` (in AI-dev).
@@ -778,10 +778,10 @@ In GitHub Actions, you typically set:
 Below are workflow examples used in the example project (see also `project-example` repo: `.github/workflows/*.yml`).
 It assumes a self-hosted runner where the following are already installed: `codexctl`, `kubectl`, `gh`, `rsync`, `docker`.
 
-### 🚀 7.1. Deploy staging (push to `main`)
+### 🚀 7.1. Deploy ai-staging (push to `main`)
 
 ```yaml
-name: "Staging deploy  🚀"
+name: "AI Staging deploy 🚀"
 
 on:
   push:
@@ -792,25 +792,25 @@ env:
   CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
   CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
-  CODEXCTL_ENV:            staging
+  CODEXCTL_ENV:            ai-staging
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
 
 concurrency:
-  group: staging-deploy
+  group: ai-staging-deploy
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: "Deploy staging via codexctl 🚀"
+    name: "Deploy ai-staging via codexctl 🚀"
     if: >
       !contains(github.event.head_commit.message, '[skip ci]') &&
       !contains(github.event.head_commit.message, '[skip-ci]') &&
       !contains(github.event.head_commit.message, '[no ci]') &&
       !contains(github.event.head_commit.message, '[no-ci]')
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     steps:
       - name: "Checkout project-example 📥"
         uses: actions/checkout@v4
@@ -818,7 +818,7 @@ jobs:
           ref: ${{ github.sha }}
           token: ${{ secrets.CODEXCTL_GH_PAT }}
 
-      - name: "Sync staging sources 📂"
+      - name: "Sync ai-staging sources 📂"
         run: |
           set -euo pipefail
           codexctl ci sync-sources
@@ -832,7 +832,7 @@ jobs:
           set -euo pipefail
           codexctl ci images
 
-      - name: "Apply staging via codexctl 🚀"
+      - name: "Apply ai-staging via codexctl 🚀"
         env:
           KUBECONFIG:           /home/runner/.kube/microk8s.config
           NO_PROXY:             127.0.0.1,localhost,::1
@@ -849,7 +849,7 @@ jobs:
   gc-registry:
     needs: deploy
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     steps:
       - name: "Checkout 📥"
         uses: actions/checkout@v4
@@ -917,7 +917,7 @@ jobs:
     name: "Allocate plan slot 🧩"
     runs-on: self-hosted
     timeout-minutes: 360
-    environment: staging
+    environment: ai-staging
     outputs:
       slot: ${{ steps.alloc.outputs.slot }}
       namespace: ${{ steps.alloc.outputs.namespace }}
@@ -941,7 +941,7 @@ jobs:
     needs: [create-ai-plan]
     name: "Deploy AI plan env 🚀"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     outputs:
       infra_ready: ${{ steps.ensure.outputs.infra_ready }}
       infra_unhealthy: ${{ steps.ensure.outputs.infra_unhealthy }}
@@ -975,7 +975,7 @@ jobs:
     needs: [create-ai-plan, deploy-ai-plan]
     name: "Run planning agent 🤖"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
       CODEXCTL_INFRA_UNHEALTHY: ${{ needs.deploy-ai-plan.outputs.infra_unhealthy }}
@@ -1005,7 +1005,7 @@ jobs:
       (needs.create-ai-plan.result != 'success' || needs.deploy-ai-plan.result != 'success' || needs.run-codex-plan.result != 'success')
     name: "Cleanup plan env on failure 🧹"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
     steps:
@@ -1063,7 +1063,7 @@ jobs:
       contains(github.event.comment.body, '[ai-plan]') &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
       GITHUB_RUN_ID:        ${{ github.run_id }}
@@ -1169,7 +1169,7 @@ jobs:
     if: github.event.label.name == '[ai-dev]' && contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
     timeout-minutes: 360
-    environment: staging
+    environment: ai-staging
     outputs:
       slot: ${{ steps.alloc.outputs.slot }}
       namespace: ${{ steps.alloc.outputs.namespace }}
@@ -1193,7 +1193,7 @@ jobs:
     needs: [create-ai]
     name: "Deploy AI environment 🚀"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     outputs:
       infra_ready: ${{ steps.ensure.outputs.infra_ready }}
       infra_unhealthy: ${{ steps.ensure.outputs.infra_unhealthy }}
@@ -1227,7 +1227,7 @@ jobs:
     needs: [create-ai, deploy-ai]
     name: "Run dev agent 🤖"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
       CODEXCTL_INFRA_UNHEALTHY: ${{ needs.deploy-ai.outputs.infra_unhealthy }}
@@ -1324,7 +1324,7 @@ jobs:
       (needs.create-ai.result != 'success' || needs.deploy-ai.result != 'success' || needs.run-codex.result != 'success')
     name: "Cleanup on failure 🧹"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
     steps:
@@ -1382,7 +1382,7 @@ jobs:
       github.event.review.state == 'changes_requested' &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
       GITHUB_RUN_ID:        ${{ github.run_id }}
@@ -1430,13 +1430,13 @@ jobs:
 ```
 
 Full example: `project-example` repo, `.github/workflows/ai_pr_review.yml`.
-### 🧯 7.6. Staging Repair by Issue (label `[ai-repair]`)
+### 🧯 7.6. AI Staging Repair by Issue (label `[ai-repair]`)
 
-This mode brings up an `ai-repair` environment (Codex pod + RBAC to the staging namespace), syncs staging sources, runs the
+This mode brings up an `ai-repair` environment (Codex pod + RBAC to the ai-staging namespace), syncs ai-staging sources, runs the
 `ai-repair_issue` agent, and if needed pushes changes to the `codex/ai-repair-<N>` branch.
 
 ```yaml
-name: "Staging Repair 🧯"
+name: "AI Staging Repair 🧯"
 
 on:
   issues:
@@ -1467,7 +1467,7 @@ jobs:
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
     timeout-minutes: 360
-    environment: staging
+    environment: ai-staging
     outputs:
       slot: ${{ steps.alloc.outputs.slot }}
       namespace: ${{ steps.alloc.outputs.namespace }}
@@ -1489,9 +1489,9 @@ jobs:
 
   deploy-ai-repair:
     needs: [create-ai-repair]
-    name: "Deploy staging repair env 🚀"
+    name: "Deploy ai-staging repair env 🚀"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     steps:
       - name: "Checkout project-example 📥"
         uses: actions/checkout@v4
@@ -1499,12 +1499,12 @@ jobs:
           ref: ${{ github.sha }}
           token: ${{ secrets.CODEXCTL_GH_PAT }}
 
-      - name: "Sync staging sources 📂"
+      - name: "Sync ai-staging sources 📂"
         run: |
           set -euo pipefail
           codexctl ci sync-sources
 
-      - name: "Ensure staging repair env via codexctl 🚀"
+      - name: "Ensure ai-staging repair env via codexctl 🚀"
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1519,7 +1519,7 @@ jobs:
           set -euo pipefail
           codexctl ci apply
 
-      - name: "Cleanup staging repair env on failure 🧹"
+      - name: "Cleanup ai-staging repair env on failure 🧹"
         if: failure() || cancelled()
         env:
           CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
@@ -1530,9 +1530,9 @@ jobs:
 
   run-codex:
     needs: [create-ai-repair, deploy-ai-repair]
-    name: "Run staging repair agent 🤖"
+    name: "Run ai-staging repair agent 🤖"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
     steps:
@@ -1541,7 +1541,7 @@ jobs:
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
 
-      - name: "Sync staging sources 📂"
+      - name: "Sync ai-staging sources 📂"
         run: |
           set -euo pipefail
           codexctl ci sync-sources
@@ -1551,14 +1551,14 @@ jobs:
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          WORKDIR="${CODEXCTL_CODE_ROOT_BASE}/staging/src"
+          WORKDIR="${CODEXCTL_CODE_ROOT_BASE}/ai-staging/src"
           cd "${WORKDIR}"
           git config user.name "${CODEXCTL_GH_USERNAME}"
           git config user.email "${CODEXCTL_GH_EMAIL}"
           git checkout -b "codex/ai-repair-${CODEXCTL_ISSUE_NUMBER}" || git checkout "codex/ai-repair-${CODEXCTL_ISSUE_NUMBER}"
         shell: bash
 
-      - name: "Run Codex staging repair agent 🤖"
+      - name: "Run Codex ai-staging repair agent 🤖"
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1571,7 +1571,7 @@ jobs:
           set -euo pipefail
           codexctl prompt run --kind ai-repair_issue
 
-      - name: "Cleanup staging repair env on failure 🧹"
+      - name: "Cleanup ai-staging repair env on failure 🧹"
         if: failure() || cancelled()
         env:
           CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
@@ -1588,7 +1588,7 @@ jobs:
           CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          WORKDIR="${CODEXCTL_CODE_ROOT_BASE}/staging/src"
+          WORKDIR="${CODEXCTL_CODE_ROOT_BASE}/ai-staging/src"
           cd "${WORKDIR}"
 
           BRANCH="codex/ai-repair-${CODEXCTL_ISSUE_NUMBER}"
@@ -1606,7 +1606,7 @@ jobs:
             exit 0
           fi
 
-          MSG="fix: staging repair for issue #${CODEXCTL_ISSUE_NUMBER}"
+          MSG="fix: ai-staging repair for issue #${CODEXCTL_ISSUE_NUMBER}"
           git commit -m "$MSG"
           git push origin "$BRANCH"
 
@@ -1642,13 +1642,13 @@ jobs:
 
 Full example: `project-example` repo, `.github/workflows/ai_repair_issue.yml`.
 
-### 👁 7.7. Staging Repair PR Review (Changes Requested for `codex/ai-repair-*`)
+### 👁 7.7. AI Staging Repair PR Review (Changes Requested for `codex/ai-repair-*`)
 
 Trigger: `changes_requested` in a review and the PR branch starts with `codex/ai-repair-`. The workflow ensures an
 `ai-repair` environment and runs `ai-repair_review`, then applies fixes via `codexctl pr review-apply`.
 
 ```yaml
-name: "Staging Repair PR Review 👁"
+name: "AI Staging Repair PR Review 👁"
 
 on:
   pull_request_review:
@@ -1675,13 +1675,13 @@ concurrency:
 
 jobs:
   run:
-    name: "Staging repair review run 🤖"
+    name: "AI Staging repair review run 🤖"
     if: >-
       github.event.review.state == 'changes_requested' &&
       startsWith(github.event.pull_request.head.ref, 'codex/ai-repair-') &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
       GITHUB_RUN_ID:        ${{ github.run_id }}
@@ -1696,7 +1696,7 @@ jobs:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
           fetch-depth: 0
 
-      - name: "Sync staging sources 📂"
+      - name: "Sync ai-staging sources 📂"
         run: |
           set -euo pipefail
           codexctl ci sync-sources
@@ -1707,7 +1707,7 @@ jobs:
           set -euo pipefail
           codexctl ci ensure-ready
 
-      - name: "Ensure staging repair env via codexctl 🚀"
+      - name: "Ensure ai-staging repair env via codexctl 🚀"
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1722,7 +1722,7 @@ jobs:
           set -euo pipefail
           codexctl ci apply
 
-      - name: "Run Codex staging repair review 🤖"
+      - name: "Run Codex ai-staging repair review 🤖"
         env:
           GITHUB_RUN_ID:           ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1744,7 +1744,7 @@ jobs:
           set -euo pipefail
           codexctl pr review-apply
 
-      - name: "Cleanup staging repair env on failure 🧹"
+      - name: "Cleanup ai-staging repair env on failure 🧹"
         if: (failure() || cancelled()) && steps.card.outputs.slot != ''
         env:
           CODEXCTL_SLOT: ${{ steps.card.outputs.slot }}
@@ -1787,7 +1787,7 @@ jobs:
   cleanup:
     name: "Cleanup AI environments 🧼"
     runs-on: self-hosted
-    environment: staging
+    environment: ai-staging
     env:
       CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
     steps:
@@ -1833,7 +1833,7 @@ Recommended set of secrets/vars in your project repository (e.g. `codex-project`
 
 - `CODEXCTL_GH_PAT` — PAT for a GitHub bot user;
 - `CODEXCTL_GH_USERNAME` — bot username. Do not use a developer’s personal account; create a dedicated technical account.
-- `KUBECONFIG` / paths to kubeconfig for staging;
+- `KUBECONFIG` / paths to kubeconfig for ai-staging;
 - secrets for DB/Redis/cache/queue (username/password, DSN, etc.);
 - `REGISTRY_HOST` and (optionally) registry credentials.
 - `OPENAI_API_KEY` — OpenAI API key.
@@ -1883,9 +1883,9 @@ You can reference such an image in `images.codex` and use it in `services.codex`
 - **Early development stage.** `codexctl` is in its early stages; there is no test coverage yet; unstable behavior and
   breaking changes are possible. Use it cautiously and budget time for debugging.
 - **Isolated clusters only.** It is assumed that `codexctl` and Codex agents work in a Kubernetes cluster **separate from
-  production**, intended for development and AI experiments (dev/staging/ai). **Do not use** it directly on top of a live
+  production**, intended for development and AI experiments (dev/ai-staging/ai). **Do not use** it directly on top of a live
   production cluster.
-- **Restrict external access.** Dev/staging/AI-dev environments must be protected:
+- **Restrict external access.** Dev/ai-staging/AI-dev environments must be protected:
   - HTTP interfaces are hidden behind OAuth2-proxy/IAP or another authentication mechanism;
   - ingresses and services must not be directly accessible from the internet without authorization;
   - access to the kube API is restricted by users/roles.

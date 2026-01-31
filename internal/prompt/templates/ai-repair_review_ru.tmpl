@@ -1,6 +1,6 @@
 {{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
 {{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
-{{- $stagingNs := printf "%s-staging" .Project -}}
+{{- $stagingNs := printf "%s-ai-staging" .Project -}}
 {{- if eq $mode "short" }}
 Продолжай работу над восстановлением инфраструктуры текущего проекта, развернутой в kubernetes‑кластере.
 Текущая задача - закрыть все нерешённые комментарии review (changes_requested), внести фиксы, закоммитить, запушить и ответить в PR.
@@ -98,13 +98,13 @@
 {{- end }}
 
 Инструменты:
-- kubectl: логи и статус, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Для staging используйте `-n {{ $stagingNs }}`.
+- kubectl: логи и статус, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Для ai-staging используйте `-n {{ $stagingNs }}`.
 - codexctl: рендер/применение шаблонизированных манифестов из `services.yaml`.
   - codexctl вызывается напрямую из PATH (не через ./codexctl).
   - Docker доступен только для сборки образов; пуш в реестр кластера или внешний реестр (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:5000" }}).
   - При запуске codexctl используйте `--skip-infra tls-issuer,echo-probe` (иначе упирается в cluster-scope и проверку локальных портов).
   - Агент работает в pod; docker демон запущен на ноде кластера через /var/run/docker.sock, поэтому localhost:5000 относится к реестру на ноде/кластере, а не к самому pod.
-  - Рендер: `codexctl render --env staging ...`.
+  - Рендер: `codexctl render --env ai-staging ...`.
   - Применение: только `--only-services/--only-infra` (или `--skip-*`), без полного apply.
   - Не включайте сервис `codex` в apply.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
@@ -145,7 +145,7 @@
    - Просмотреть все комментарии, особенно из последнего review `changes_requested`.
 2) Закрыть каждый нерешённый комментарий:
    - Вносить точечные изменения в код/конфиг/документацию.
-   - Если менялись код/контейнеры сервиса, увеличь его версию в `services.yaml` (patch‑level), чтобы staging пересобрал и задеплоил образ после вызова `codexctl apply`.
+   - Если менялись код/контейнеры сервиса, увеличь его версию в `services.yaml` (patch‑level), чтобы ai-staging пересобрал и задеплоил образ после вызова `codexctl apply`.
 3) Проверить инфраструктуру:
    - Проверить статусы pod’ов/деплойментов и ключевые эндпоинты.
 4) Доставить результат:

@@ -57,7 +57,7 @@ func newApplyCommand(opts *Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to apply (dev, staging, ai)")
+	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to apply (dev, ai-staging, ai)")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Namespace override for resources")
 	cmd.Flags().Bool("wait", false, "Wait for core deployments to become ready")
 	cmd.Flags().Bool("preflight", false, "Run preflight checks before applying manifests")

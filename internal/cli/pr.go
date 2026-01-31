@@ -180,7 +180,7 @@ func newPRReviewApplyCommand(opts *Options) *cobra.Command {
 			slotRoot := strings.TrimSuffix(codeRootBase, string(os.PathSeparator))
 			workdir := filepath.Join(slotRoot, strconv.Itoa(slot), "src")
 			if opts.Env == "ai-repair" {
-				workdir = filepath.Join(slotRoot, "staging", "src")
+				workdir = filepath.Join(slotRoot, "ai-staging", "src")
 			}
 
 			if err := commitAndPushPRChanges(ctx, logger, workdir, branch, prNumber); err != nil {

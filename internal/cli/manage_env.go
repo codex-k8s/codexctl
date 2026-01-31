@@ -628,7 +628,7 @@ func resolveSourceTarget(envName string, slot int, codeRootBase string) (string,
 		}
 		return filepath.Join(base, strconv.Itoa(slot), "src"), nil
 	case "ai-repair":
-		return filepath.Join(base, "staging", "src"), nil
+		return filepath.Join(base, "ai-staging", "src"), nil
 	default:
 		return filepath.Join(base, envName, "src"), nil
 	}

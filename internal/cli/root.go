@@ -21,7 +21,7 @@ const (
 type Options struct {
 	// ConfigPath is the path to services.yaml.
 	ConfigPath string
-	// Env is the environment name (e.g. dev, staging, ai).
+	// Env is the environment name (e.g. dev, ai-staging, ai).
 	Env string
 	// Namespace overrides the derived namespace.
 	Namespace string
@@ -78,7 +78,7 @@ func newRootCommand(opts *Options, logger *slog.Logger) *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringVarP(&opts.ConfigPath, "config", "c", configDefault, "Path to services.yaml configuration file")
-	cmd.PersistentFlags().StringVar(&opts.Env, "env", envDefault, "Environment name (e.g. dev, staging, ai)")
+	cmd.PersistentFlags().StringVar(&opts.Env, "env", envDefault, "Environment name (e.g. dev, ai-staging, ai)")
 	cmd.PersistentFlags().StringVar(&opts.Namespace, "namespace", namespaceDefault, "Target Kubernetes namespace override")
 	cmd.PersistentFlags().String("log-level", logLevelDefault, "Log level (debug, info, warn, error)")
 

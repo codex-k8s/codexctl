@@ -1,6 +1,6 @@
 {{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
 {{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
-{{- $stagingNs := printf "%s-staging" .Project -}}
+{{- $stagingNs := printf "%s-ai-staging" .Project -}}
 {{- if eq $mode "short" }}
 Continue working on restoring the infrastructure of the current project deployed to a Kubernetes cluster.
 The current task is to close all unresolved review comments (changes_requested), apply fixes, commit, push, and reply in the PR.
@@ -98,13 +98,13 @@ There are no unresolved review comments (or they are hidden/minimized). Gather f
 {{- end }}
 
 Tools:
-- kubectl: logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Use `-n {{ $stagingNs }}` for staging.
+- kubectl: logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Use `-n {{ $stagingNs }}` for ai-staging.
 - codexctl: render/apply templated manifests from `services.yaml`.
   - codexctl is invoked directly from PATH (not via ./codexctl).
   - Docker is available only for image builds; push to the cluster registry or an external registry (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:5000" }}).
   - When running codexctl, use `--skip-infra tls-issuer,echo-probe` (otherwise it hits cluster-scope access and localhost port checks).
   - You are running in a pod; the Docker daemon is on the cluster node via /var/run/docker.sock, so localhost:5000 refers to the registry on the node/cluster, not the pod itself.
-  - Render: `codexctl render --env staging ...`.
+  - Render: `codexctl render --env ai-staging ...`.
   - Apply: only with `--only-services/--only-infra` (or `--skip-*`), never full apply.
   - Never include the `codex` service in apply.
 - `services.yaml` is the source of truth for services/environments; update it when adding/removing services or changing deploy templates.
@@ -145,7 +145,7 @@ Responsibilities:
    - Review all comments, especially those from the latest `changes_requested` review.
 2) Close each unresolved comment:
    - Make targeted changes in code/config/docs.
-   - If service code/containers changed, bump its version in `services.yaml` (patch level) so staging rebuilds and redeploys after `codexctl apply`.
+   - If service code/containers changed, bump its version in `services.yaml` (patch level) so ai-staging rebuilds and redeploys after `codexctl apply`.
 3) Verify the infrastructure:
    - Check pod/deployment statuses and key endpoints.
 4) Deliver the result:

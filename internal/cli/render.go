@@ -48,7 +48,7 @@ func newRenderCommand(opts *Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to render (dev, staging, ai, etc.)")
+	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to render (dev, ai-staging, ai, etc.)")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Namespace override for rendering")
 	cmd.Flags().IntVar(&slot, "slot", 0, "Slot number for slot-based environments (e.g. ai)")
 	addRenderFilterFlags(cmd, &onlyServices, &skipServices, &onlyInfra, &skipInfra, "Render", "Skip")
