@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/codex-k8s/codexctl/internal/prompt"
@@ -339,56 +342,221 @@ func newManageEnvCloseLinkedIssueCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
-// syncSources copies files from source to target using rsync (if available) or simple copy.
-func syncSources(source, target string) error {
-	// Ensure trailing slash for rsync semantics
-	src := source
-	if !strings.HasSuffix(src, string(os.PathSeparator)) {
-		src += string(os.PathSeparator)
-	}
-	tgt := target
-	if !strings.HasSuffix(tgt, string(os.PathSeparator)) {
-		tgt += string(os.PathSeparator)
-	}
-
-	// Ensure target directory hierarchy exists before syncing.
-	if err := os.MkdirAll(tgt, 0o755); err != nil {
-		return fmt.Errorf("create target dir %q: %w", tgt, err)
-	}
-
-	if _, err := exec.LookPath("rsync"); err == nil {
-		cmd := exec.Command("rsync", "-a", "--delete", "--no-perms", "--no-owner", "--no-group", src, tgt)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("rsync sources: %w", err)
-		}
-		return nil
-	}
-
-	return copyDir(src, tgt)
+// syncTarget describes a PVC-backed workspace sync target.
+type syncTarget struct {
+	// Namespace is the Kubernetes namespace hosting the workspace PVC.
+	Namespace string
+	// PVCName is the workspace PVC name.
+	PVCName string
+	// MountPath is the mount path inside the sync pod.
+	MountPath string
+	// TargetRel is the relative path inside the PVC.
+	TargetRel string
+	// UID is the user ID for sync pod file ownership.
+	UID int
+	// GID is the group ID for sync pod file ownership.
+	GID int
+	// Image is the container image used by the sync pod.
+	Image string
+	// KubeClient is the Kubernetes client used for sync operations.
+	KubeClient *kube.Client
 }
 
-// copyDir performs a naive recursive file copy when rsync is unavailable.
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if info.IsDir() {
-			return os.MkdirAll(target, info.Mode())
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, info.Mode())
-	})
+// syncSources copies files from source into a PVC-backed workspace.
+func syncSources(ctx context.Context, logger *slog.Logger, source string, target syncTarget) error {
+	if target.KubeClient == nil {
+		return fmt.Errorf("sync target is missing kube client")
+	}
+	if strings.TrimSpace(target.Namespace) == "" {
+		return fmt.Errorf("sync target namespace is empty")
+	}
+	if strings.TrimSpace(target.PVCName) == "" {
+		return fmt.Errorf("sync target PVC name is empty")
+	}
+	if strings.TrimSpace(target.MountPath) == "" {
+		return fmt.Errorf("sync target mount path is empty")
+	}
+	if strings.TrimSpace(target.TargetRel) == "" {
+		return fmt.Errorf("sync target relative path is empty")
+	}
+	if strings.TrimSpace(source) == "" {
+		return fmt.Errorf("sync source is empty")
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	targetRel := strings.TrimPrefix(filepath.Clean(target.TargetRel), string(os.PathSeparator))
+	targetPath := filepath.Join(target.MountPath, targetRel)
+
+	podName := fmt.Sprintf("codexctl-sync-%d", time.Now().UnixNano())
+	podYAML, err := buildSyncPodYAML(podName, target)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("creating sync pod", "namespace", target.Namespace, "pod", podName)
+	if err := target.KubeClient.Apply(ctx, podYAML); err != nil {
+		return fmt.Errorf("apply sync pod: %w", err)
+	}
+	defer func() {
+		_ = target.KubeClient.RunRaw(context.Background(), nil, "-n", target.Namespace, "delete", "pod", podName, "--ignore-not-found")
+	}()
+
+	waitCtx, cancelWait := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancelWait()
+	if err := target.KubeClient.RunRaw(waitCtx, nil, "-n", target.Namespace, "wait", "--for=condition=Ready", "pod/"+podName, "--timeout=120s"); err != nil {
+		return fmt.Errorf("wait for sync pod: %w", err)
+	}
+
+	cleanCmd := fmt.Sprintf("mkdir -p %q && find %q -mindepth 1 -maxdepth 1 -exec rm -rf {} +", targetPath, targetPath)
+	if err := target.KubeClient.RunRaw(ctx, nil, "-n", target.Namespace, "exec", podName, "--", "sh", "-c", cleanCmd); err != nil {
+		return fmt.Errorf("prepare workspace dir: %w", err)
+	}
+
+	if err := kubectlCopyToPod(ctx, target.KubeClient, target.Namespace, podName, source, targetPath); err != nil {
+		return fmt.Errorf("copy sources to workspace: %w", err)
+	}
+
+	logger.Info("workspace synced",
+		"namespace", target.Namespace,
+		"pod", podName,
+		"target", targetPath,
+		"source", source,
+	)
+	return nil
+}
+
+//go:embed templates/sync-pod.yaml.gohtml
+var syncPodTemplate string
+
+// syncPodTemplateData is the template context for the workspace sync pod.
+type syncPodTemplateData struct {
+	// PodName is the name of the sync pod.
+	PodName string
+	// Namespace is the Kubernetes namespace for the sync pod.
+	Namespace string
+	// Image is the container image used by the sync pod.
+	Image string
+	// MountPath is the mount path inside the sync pod.
+	MountPath string
+	// PVCName is the PVC name to mount.
+	PVCName string
+	// FSGroup is the pod-level fsGroup.
+	FSGroup int
+	// RunAsUser is the container runAsUser UID.
+	RunAsUser int
+	// RunAsGroup is the container runAsGroup GID.
+	RunAsGroup int
+}
+
+// syncPodTemplateEngine renders the sync pod YAML manifest.
+var syncPodTemplateEngine = template.Must(
+	template.New("sync-pod").
+		Funcs(template.FuncMap{
+			"quote": strconv.Quote,
+		}).
+		Parse(syncPodTemplate),
+)
+
+// buildSyncPodYAML builds a pod manifest for workspace syncing.
+func buildSyncPodYAML(podName string, target syncTarget) ([]byte, error) {
+	uid := target.UID
+	gid := target.GID
+	if uid <= 0 {
+		uid = 1000
+	}
+	if gid <= 0 {
+		gid = 1000
+	}
+	image := strings.TrimSpace(target.Image)
+	if image == "" {
+		image = "busybox:1.37.0"
+	}
+
+	data := syncPodTemplateData{
+		PodName:    podName,
+		Namespace:  target.Namespace,
+		Image:      image,
+		MountPath:  target.MountPath,
+		PVCName:    target.PVCName,
+		FSGroup:    gid,
+		RunAsUser:  uid,
+		RunAsGroup: gid,
+	}
+	var buf bytes.Buffer
+	if err := syncPodTemplateEngine.Execute(&buf, data); err != nil {
+		return nil, fmt.Errorf("render sync pod template: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// resolveWorkspaceRelativeTarget computes the workspace-relative path for sync.
+func resolveWorkspaceRelativeTarget(envName string, slot int, codeRootBase, workspaceMount string) (string, error) {
+	if strings.TrimSpace(codeRootBase) == "" {
+		return "", fmt.Errorf("code root base is empty")
+	}
+	if strings.TrimSpace(workspaceMount) == "" {
+		return "", fmt.Errorf("workspace mount is empty")
+	}
+	targetAbs, err := resolveSourceTarget(envName, slot, codeRootBase)
+	if err != nil {
+		return "", err
+	}
+
+	base := filepath.Clean(workspaceMount)
+	target := filepath.Clean(targetAbs)
+	prefix := base + string(os.PathSeparator)
+	if !strings.HasPrefix(target, prefix) {
+		return "", fmt.Errorf("code root %q must be under workspace mount %q", codeRootBase, workspaceMount)
+	}
+	rel := strings.TrimPrefix(target, prefix)
+	if strings.TrimSpace(rel) == "" {
+		return "", fmt.Errorf("workspace relative path is empty")
+	}
+	return rel, nil
+}
+
+// kubectlCopyToPod copies sources into the target pod using kubectl cp.
+func kubectlCopyToPod(ctx context.Context, client *kube.Client, namespace, pod, source, dest string) error {
+	if client == nil {
+		return fmt.Errorf("kube client is nil")
+	}
+	src := filepath.Clean(source)
+	src = filepath.Join(src, ".")
+	dst := fmt.Sprintf("%s/%s:%s", namespace, pod, dest)
+
+	args := make([]string, 0, 4)
+	if client.Context != "" {
+		args = append(args, "--context", client.Context)
+	}
+	args = append(args, "cp", src, dst)
+
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if client.Kubeconfig != "" {
+		env := os.Environ()
+		env = append(env, "KUBECONFIG="+client.Kubeconfig)
+		cmd.Env = env
+	}
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("kubectl cp failed: %w", err)
+	}
+	return nil
+}
+
+// parseEnvInt reads an integer environment variable with a default fallback.
+func parseEnvInt(key string, def int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return def
+	}
+	return value
 }
 
 // newManageEnvSetCommand creates "manage-env set" to patch issue/pr fields for a slot.
@@ -727,9 +895,6 @@ func runEnvCleanup(
 
 		if err := destroyStack(ctx, logger, stackSlot, ctxData, envStore.envCfg, envName); err != nil {
 			return err
-		}
-		if err := handleDataPaths(logger, stackSlot, dataPathDelete); err != nil {
-			logger.Warn("failed to delete data paths for environment", "slot", rec.Slot, "namespace", rec.Namespace, "error", err)
 		}
 
 		if withConfigMap && stateNS != "" && rec.ConfigName != "" {

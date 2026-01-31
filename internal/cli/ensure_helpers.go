@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -211,13 +213,35 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 	}
 
 	if req.codeRootBase != "" && req.source != "" {
-		target := fmt.Sprintf("%s/%d/src", strings.TrimSuffix(req.codeRootBase, "/"), rec.Slot)
-		if err := syncSources(req.source, target); err != nil {
-			return res, fmt.Errorf("sync sources to %q: %w", target, err)
+		workspaceMount := strings.TrimSpace(os.Getenv("CODEXCTL_WORKSPACE_MOUNT"))
+		if workspaceMount == "" {
+			workspaceMount = "/workspace"
+		}
+		workspacePVC := strings.TrimSpace(os.Getenv("CODEXCTL_WORKSPACE_PVC"))
+		if workspacePVC == "" && slotRes.store.stackCfg != nil {
+			workspacePVC = fmt.Sprintf("%s-workspace", slotRes.store.stackCfg.Project)
+		}
+		targetRel, err := resolveWorkspaceRelativeTarget(envName, rec.Slot, req.codeRootBase, workspaceMount)
+		if err != nil {
+			return res, err
+		}
+		targetPath := filepath.Join(workspaceMount, targetRel)
+		syncImg := strings.TrimSpace(os.Getenv("CODEXCTL_SYNC_IMAGE"))
+		if err := syncSources(ctx, logger, req.source, syncTarget{
+			Namespace:  rec.Namespace,
+			PVCName:    workspacePVC,
+			MountPath:  workspaceMount,
+			TargetRel:  targetRel,
+			UID:        parseEnvInt("CODEXCTL_WORKSPACE_UID", 1000),
+			GID:        parseEnvInt("CODEXCTL_WORKSPACE_GID", 1000),
+			Image:      syncImg,
+			KubeClient: slotRes.store.kubeClient,
+		}); err != nil {
+			return res, fmt.Errorf("sync sources to %q: %w", targetPath, err)
 		}
 		logger.Info("slot workspace synced (ensure-ready)",
 			"slot", rec.Slot,
-			"target", target,
+			"target", targetPath,
 			"source", req.source,
 			"env", envName,
 			"namespace", rec.Namespace,
@@ -235,12 +259,6 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 	stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOptsSlot)
 	if err != nil {
 		return res, err
-	}
-
-	if recreated {
-		if err := handleDataPaths(logger, stackCfg, dataPathClean); err != nil {
-			logger.Warn("failed to clean data paths for recreated environment", "slot", rec.Slot, "namespace", rec.Namespace, "error", err)
-		}
 	}
 
 	if req.prepareImages {

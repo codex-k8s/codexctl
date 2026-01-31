@@ -26,11 +26,17 @@ func runDoctorChecks(_ context.Context, logger *slog.Logger, params doctorParams
 	var required []string
 	required = append(required, "kubectl", "bash")
 	if params.stackCfg != nil && len(params.stackCfg.Images) > 0 {
-		required = append(required, "docker")
+		kanikoCfg, err := resolveKanikoConfig()
+		if err != nil {
+			logger.Error("doctor check failed: missing required tool", "tool", "kaniko", "env", params.envName, "error", err)
+			required = append(required, "kaniko")
+		} else {
+			required = append(required, kanikoCfg.Executor)
+		}
 	}
 	required = append(required, "git", "gh")
 
-	optional := []string{"rsync"}
+	optional := []string{}
 
 	missing := make([]string, 0, len(required))
 	for _, tool := range required {

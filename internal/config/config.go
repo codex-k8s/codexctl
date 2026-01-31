@@ -43,8 +43,8 @@ type StackConfig struct {
 	Services []Service `yaml:"services,omitempty"`
 	// Hooks defines global hook steps around stack operations.
 	Hooks HookSet `yaml:"hooks,omitempty"`
-	// DataPaths defines data directory management settings.
-	DataPaths *DataPaths `yaml:"dataPaths,omitempty"`
+	// Storage defines PVC settings for workspace/data/registry.
+	Storage *StorageConfig `yaml:"storage,omitempty"`
 	// State describes how slot state is stored.
 	State StateConfig `yaml:"state,omitempty"`
 	// Versions provides named version strings available in templates.
@@ -122,6 +122,26 @@ type Environment struct {
 	ImagePullPolicy string `yaml:"imagePullPolicy,omitempty"`
 	// LocalRegistry configures an optional local registry for dev.
 	LocalRegistry *LocalRegistrySpec `yaml:"localRegistry,omitempty"`
+}
+
+// StorageConfig describes PVC settings for shared storage.
+type StorageConfig struct {
+	// Workspace defines the PVC for shared source workspaces.
+	Workspace *PVCSpec `yaml:"workspace,omitempty"`
+	// Data defines the PVC for stateful service data.
+	Data *PVCSpec `yaml:"data,omitempty"`
+	// Registry defines the PVC for the registry storage.
+	Registry *PVCSpec `yaml:"registry,omitempty"`
+}
+
+// PVCSpec describes a PersistentVolumeClaim template.
+type PVCSpec struct {
+	// Size is the requested storage size (e.g. "20Gi").
+	Size string `yaml:"size,omitempty"`
+	// StorageClass sets the storage class name.
+	StorageClass string `yaml:"storageClass,omitempty"`
+	// AccessModes sets PVC access modes (e.g. ["ReadWriteMany"]).
+	AccessModes []string `yaml:"accessModes,omitempty"`
 }
 
 // LocalRegistrySpec describes a local image registry used in development setups.
@@ -216,22 +236,24 @@ type ServiceIngress struct {
 
 // Overlay describes per-environment overrides for a service.
 type Overlay struct {
-	// HostMounts inject hostPath mounts into workloads.
-	HostMounts []HostMount `yaml:"hostMounts,omitempty"`
+	// PVCMounts inject persistent volume claim mounts into workloads.
+	PVCMounts []PVCMount `yaml:"pvcMounts,omitempty"`
 	// DropKinds lists Kubernetes kinds to exclude for the environment.
 	DropKinds []string `yaml:"dropKinds,omitempty"`
 }
 
-// HostMount describes a hostPath mount injected into workloads.
-type HostMount struct {
+// PVCMount describes a persistent volume claim mount injected into workloads.
+type PVCMount struct {
 	// Name is the volume name to create.
 	Name string `yaml:"name"`
-	// HostPath is the absolute path on the host.
-	HostPath string `yaml:"hostPath"`
+	// ClaimName is the PVC name to mount.
+	ClaimName string `yaml:"claimName"`
 	// MountPath is the container path to mount into.
 	MountPath string `yaml:"mountPath"`
-	// HostPathType is the Kubernetes hostPath type (e.g. Directory).
-	HostPathType string `yaml:"hostPathType,omitempty"`
+	// SubPath is an optional path within the PVC to mount.
+	SubPath string `yaml:"subPath,omitempty"`
+	// ReadOnly toggles read-only mounts.
+	ReadOnly bool `yaml:"readOnly,omitempty"`
 }
 
 // StateConfig describes how environment state (slots, metadata) is stored.
@@ -320,6 +342,8 @@ type TemplateContext struct {
 	BaseDomain map[string]string
 	// Codex provides Codex-specific configuration for templates.
 	Codex CodexConfig
+	// Storage provides PVC configuration for templates.
+	Storage *StorageConfig
 	// IssueComments contains related GitHub issue comments.
 	IssueComments []promptctx.IssueComment
 	// ReviewComments contains related PR review comments.
@@ -450,6 +474,7 @@ func LoadStackConfig(path string, opts LoadOptions) (*StackConfig, TemplateConte
 	ctx.Versions = cfg.Versions
 	ctx.BaseDomain = cfg.BaseDomain
 	ctx.Codex = cfg.Codex
+	ctx.Storage = cfg.Storage
 
 	return &cfg, ctx, nil
 }
@@ -490,14 +515,15 @@ func RenderTemplate(name string, raw []byte, ctx TemplateContext) ([]byte, error
 // buildFuncMap constructs the common set of template functions available in services.yaml and manifests.
 func buildFuncMap(ctx TemplateContext) template.FuncMap {
 	return template.FuncMap{
-		"default":  funcDef,
-		"toLower":  strings.ToLower,
-		"slug":     funcSlug,
-		"truncSHA": funcTruncSHA,
-		"envOr":    funcEnvOr(ctx.EnvMap),
-		"ternary":  funcTernary,
-		"now":      func() time.Time { return ctx.Now },
-		"join":     funcJoin,
+		"default":    funcDef,
+		"toLower":    strings.ToLower,
+		"slug":       funcSlug,
+		"truncSHA":   funcTruncSHA,
+		"envOr":      funcEnvOr(ctx.EnvMap),
+		"ternary":    funcTernary,
+		"now":        func() time.Time { return ctx.Now },
+		"join":       funcJoin,
+		"trimPrefix": funcTrimPrefix,
 	}
 }
 
@@ -547,6 +573,11 @@ func funcTernary(cond bool, a, b any) any {
 // funcJoin joins a slice of strings with the given separator.
 func funcJoin(values []string, sep string) string {
 	return strings.Join(values, sep)
+}
+
+// funcTrimPrefix removes the prefix from value when present.
+func funcTrimPrefix(value, prefix string) string {
+	return strings.TrimPrefix(value, prefix)
 }
 
 // ResolveEnvironment returns the effective environment configuration for the given name,

@@ -93,7 +93,7 @@ func (e *Engine) RenderStackWithOptions(cfg *config.StackConfig, ctx config.Temp
 				if err := applyServiceImage(doc, svc, ctx); err != nil {
 					return nil, fmt.Errorf("render image for service %q: %w", svc.Name, err)
 				}
-				applyHostMounts(doc, svc, overlay)
+				applyPVCMounts(doc, svc, overlay)
 				documents = append(documents, doc)
 			}
 		}
@@ -295,9 +295,9 @@ func applyServiceImage(doc map[string]any, svc config.Service, ctx config.Templa
 	return nil
 }
 
-// applyHostMounts injects hostPath volumes and mounts into a deployment according to overlay.
-func applyHostMounts(doc map[string]any, svc config.Service, overlay config.Overlay) {
-	if len(overlay.HostMounts) == 0 {
+// applyPVCMounts injects PVC volumes and mounts into a deployment according to overlay.
+func applyPVCMounts(doc map[string]any, svc config.Service, overlay config.Overlay) {
+	if len(overlay.PVCMounts) == 0 {
 		return
 	}
 
@@ -323,15 +323,15 @@ func applyHostMounts(doc map[string]any, svc config.Service, overlay config.Over
 	main := containers[0]
 
 	volumes := getSliceOfMaps(podSpec, "volumes")
-	volumes = applyVolumes(volumes, overlay.HostMounts)
+	volumes = applyPVCVolumes(volumes, overlay.PVCMounts)
 	podSpec["volumes"] = volumes
 
-	main = applyVolumeMounts(main, overlay.HostMounts)
+	main = applyPVCVolumeMounts(main, overlay.PVCMounts)
 	containers[0] = main
 
 	initContainers := getSliceOfMaps(podSpec, "initContainers")
 	for i, ic := range initContainers {
-		initContainers[i] = applyVolumeMounts(ic, overlay.HostMounts)
+		initContainers[i] = applyPVCVolumeMounts(ic, overlay.PVCMounts)
 	}
 	if len(initContainers) > 0 {
 		podSpec["initContainers"] = initContainers
@@ -365,8 +365,8 @@ func getSliceOfMaps(parent map[string]any, key string) []map[string]any {
 	return normalizeMapSlice(val)
 }
 
-// applyVolumes merges existing volumes with hostPath volumes derived from mounts.
-func applyVolumes(volumes []map[string]any, mounts []config.HostMount) []map[string]any {
+// applyPVCVolumes merges existing volumes with PVC volumes derived from mounts.
+func applyPVCVolumes(volumes []map[string]any, mounts []config.PVCMount) []map[string]any {
 	out := make([]map[string]any, 0, len(volumes)+len(mounts))
 	excluded := make(map[string]struct{})
 	for _, m := range mounts {
@@ -380,26 +380,21 @@ func applyVolumes(volumes []map[string]any, mounts []config.HostMount) []map[str
 		out = append(out, v)
 	}
 	for _, m := range mounts {
-		if m.Name == "" || m.HostPath == "" || m.MountPath == "" {
+		if m.Name == "" || m.ClaimName == "" || m.MountPath == "" {
 			continue
-		}
-		hostPathType := m.HostPathType
-		if hostPathType == "" {
-			hostPathType = "Directory"
 		}
 		out = append(out, map[string]any{
 			"name": m.Name,
-			"hostPath": map[string]any{
-				"path": m.HostPath,
-				"type": hostPathType,
+			"persistentVolumeClaim": map[string]any{
+				"claimName": m.ClaimName,
 			},
 		})
 	}
 	return out
 }
 
-// applyVolumeMounts merges existing volumeMounts with mounts derived from hostPath settings.
-func applyVolumeMounts(container map[string]any, mounts []config.HostMount) map[string]any {
+// applyPVCVolumeMounts merges existing volumeMounts with mounts derived from PVC settings.
+func applyPVCVolumeMounts(container map[string]any, mounts []config.PVCMount) map[string]any {
 	if container == nil {
 		return container
 	}
@@ -424,10 +419,17 @@ func applyVolumeMounts(container map[string]any, mounts []config.HostMount) map[
 		if m.Name == "" || m.MountPath == "" {
 			continue
 		}
-		out = append(out, map[string]any{
+		entry := map[string]any{
 			"name":      m.Name,
 			"mountPath": m.MountPath,
-		})
+		}
+		if m.SubPath != "" {
+			entry["subPath"] = m.SubPath
+		}
+		if m.ReadOnly {
+			entry["readOnly"] = true
+		}
+		out = append(out, entry)
 	}
 
 	if len(out) > 0 {

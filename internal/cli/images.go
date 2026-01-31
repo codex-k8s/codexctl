@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -87,28 +88,8 @@ func mirrorExternalImages(ctx context.Context, logger *slog.Logger, cfg *config.
 // ensureImageMirrored checks if the local image reference exists, and if not,
 // pulls it from the remote reference and pushes it to the local registry.
 func ensureImageMirrored(ctx context.Context, logger *slog.Logger, name, remote, local string) error {
-	// Check if the image is already present in the local registry.
-	checkCmd := exec.CommandContext(ctx, "docker", "manifest", "inspect", local)
-	if err := checkCmd.Run(); err == nil {
-		logger.Info("image already present in local registry", "name", name, "image", local)
-		return nil
-	}
-
 	logger.Info("mirroring external image into local registry", "name", name, "from", remote, "to", local)
-
-	if err := runLogged(ctx, logger, "docker", "pull", remote); err != nil {
-		return fmt.Errorf("docker pull %q failed: %w", remote, err)
-	}
-
-	if err := runLogged(ctx, logger, "docker", "tag", remote, local); err != nil {
-		return fmt.Errorf("docker tag %q %q failed: %w", remote, local, err)
-	}
-
-	if err := runLogged(ctx, logger, "docker", "push", local); err != nil {
-		return fmt.Errorf("docker push %q failed: %w", local, err)
-	}
-
-	return nil
+	return runKanikoMirror(ctx, logger, remote, local)
 }
 
 // runLogged runs a command and logs it at info level.
@@ -153,7 +134,7 @@ func newImagesBuildCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
-// buildImages builds and pushes all images with type=build using Docker.
+// buildImages builds and pushes all images with type=build using Kaniko.
 func buildImages(ctx context.Context, logger *slog.Logger, cfg *config.StackConfig, tmplCtx config.TemplateContext) error {
 	if cfg == nil {
 		return fmt.Errorf("stack config is nil")
@@ -205,22 +186,31 @@ func buildSingleImage(ctx context.Context, logger *slog.Logger, name string, img
 
 	logger.Info("building image", "name", name, "image", fullRef, "dockerfile", dockerfile, "context", contextPath)
 
-	args := []string{"build", "-t", fullRef}
-	if dockerfile != "" {
-		args = append(args, "-f", dockerfile)
+	kanikoCfg, err := resolveKanikoConfig()
+	if err != nil {
+		return err
+	}
+
+	if dockerfile == "" {
+		dockerfile = "Dockerfile"
+	}
+	if !filepath.IsAbs(dockerfile) && tmplCtx.ProjectRoot != "" {
+		dockerfile = filepath.Join(tmplCtx.ProjectRoot, dockerfile)
 	}
 
 	// Build arguments (templated).
+	buildArgs := make(map[string]string, len(img.BuildArgs))
 	for key, raw := range img.BuildArgs {
 		rendered, err := config.RenderTemplate("image-build-arg-"+name+"-"+key, []byte(raw), tmplCtx)
 		if err != nil {
 			return fmt.Errorf("render buildArg %q for image %q: %w", key, name, err)
 		}
 		value := strings.TrimSpace(string(rendered))
-		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", key, value))
+		buildArgs[key] = value
 	}
 
 	// Build contexts (templated, path may be relative to project root).
+	buildContexts := make(map[string]string, len(img.BuildContexts))
 	for key, raw := range img.BuildContexts {
 		rendered, err := config.RenderTemplate("image-build-context-"+name+"-"+key, []byte(raw), tmplCtx)
 		if err != nil {
@@ -230,18 +220,148 @@ func buildSingleImage(ctx context.Context, logger *slog.Logger, name string, img
 		if path != "" && !filepath.IsAbs(path) && tmplCtx.ProjectRoot != "" {
 			path = filepath.Join(tmplCtx.ProjectRoot, path)
 		}
-		args = append(args, "--build-context", fmt.Sprintf("%s=%s", key, path))
+		buildContexts[key] = path
 	}
 
-	args = append(args, contextPath)
-
-	if err := runLogged(ctx, logger, "docker", args...); err != nil {
-		return fmt.Errorf("docker build for image %q failed: %w", name, err)
-	}
-
-	if err := runLogged(ctx, logger, "docker", "push", fullRef); err != nil {
-		return fmt.Errorf("docker push for image %q failed: %w", name, err)
+	if err := runKanikoBuild(ctx, logger, kanikoCfg, contextPath, dockerfile, fullRef, buildArgs, buildContexts); err != nil {
+		return fmt.Errorf("kaniko build for image %q failed: %w", name, err)
 	}
 
 	return nil
+}
+
+// kanikoConfig describes the execution settings for Kaniko builds.
+type kanikoConfig struct {
+	// Executor is the kaniko executor binary path.
+	Executor string
+	// Insecure enables pushing to insecure registries.
+	Insecure bool
+	// SkipTLSVerify disables TLS verification when pushing.
+	SkipTLSVerify bool
+	// SkipTLSVerifyPull disables TLS verification when pulling.
+	SkipTLSVerifyPull bool
+}
+
+// resolveKanikoConfig reads Kaniko settings from the environment.
+func resolveKanikoConfig() (kanikoConfig, error) {
+	execPath := strings.TrimSpace(os.Getenv("CODEXCTL_KANIKO_EXECUTOR"))
+	if execPath == "" {
+		execPath = "/kaniko/executor"
+	}
+	if _, err := exec.LookPath(execPath); err != nil {
+		return kanikoConfig{}, fmt.Errorf("kaniko executor not found: %w", err)
+	}
+	return kanikoConfig{
+		Executor:          execPath,
+		Insecure:          lookupEnvBool("CODEXCTL_KANIKO_INSECURE"),
+		SkipTLSVerify:     lookupEnvBool("CODEXCTL_KANIKO_SKIP_TLS_VERIFY"),
+		SkipTLSVerifyPull: lookupEnvBool("CODEXCTL_KANIKO_SKIP_TLS_VERIFY_PULL"),
+	}, nil
+}
+
+// runKanikoMirror builds a scratch Dockerfile that mirrors a remote image.
+func runKanikoMirror(ctx context.Context, logger *slog.Logger, remote, local string) error {
+	kanikoCfg, err := resolveKanikoConfig()
+	if err != nil {
+		return err
+	}
+
+	tmpDir, err := os.MkdirTemp("", "codexctl-mirror-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir for mirror: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dockerfile := filepath.Join(tmpDir, "Dockerfile")
+	content := fmt.Sprintf("FROM %s\n", remote)
+	if err := os.WriteFile(dockerfile, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write mirror Dockerfile: %w", err)
+	}
+
+	return runKanikoBuild(ctx, logger, kanikoCfg, tmpDir, dockerfile, local, nil, nil)
+}
+
+// runKanikoBuild runs the kaniko executor for a build context.
+func runKanikoBuild(
+	ctx context.Context,
+	logger *slog.Logger,
+	cfg kanikoConfig,
+	contextPath string,
+	dockerfile string,
+	destination string,
+	buildArgs map[string]string,
+	buildContexts map[string]string,
+) error {
+	ctxPath := strings.TrimSpace(contextPath)
+	if ctxPath == "" {
+		return fmt.Errorf("kaniko context is empty")
+	}
+	if !filepath.IsAbs(ctxPath) {
+		abs, err := filepath.Abs(ctxPath)
+		if err != nil {
+			return fmt.Errorf("resolve build context %q: %w", ctxPath, err)
+		}
+		ctxPath = abs
+	}
+	ctxArg := formatKanikoContext(ctxPath)
+
+	args := []string{
+		"--context", ctxArg,
+		"--destination", destination,
+	}
+	if dockerfile != "" {
+		args = append(args, "--dockerfile", dockerfile)
+	}
+	if cfg.Insecure {
+		args = append(args, "--insecure")
+	}
+	if cfg.SkipTLSVerify {
+		args = append(args, "--skip-tls-verify")
+	}
+	if cfg.SkipTLSVerifyPull {
+		args = append(args, "--skip-tls-verify-pull")
+	}
+
+	for key, value := range buildArgs {
+		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", key, value))
+	}
+	for key, path := range buildContexts {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		ctxRef := formatKanikoContext(path)
+		args = append(args, "--build-context", fmt.Sprintf("%s=%s", key, ctxRef))
+	}
+
+	return runLogged(ctx, logger, cfg.Executor, args...)
+}
+
+// formatKanikoContext ensures the context path has a scheme understood by kaniko.
+func formatKanikoContext(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return path
+	}
+	if strings.Contains(path, "://") {
+		return path
+	}
+	if !filepath.IsAbs(path) {
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+	}
+	return "dir://" + path
+}
+
+// lookupEnvBool reads a boolean env var using the shared parser.
+func lookupEnvBool(key string) bool {
+	raw, ok := os.LookupEnv(key)
+	if !ok {
+		return false
+	}
+	parsed, ok := parseEnvBool(raw)
+	if !ok {
+		return false
+	}
+	return parsed
 }

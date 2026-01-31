@@ -40,6 +40,12 @@ type ciEnv struct {
 	MaxSlots int `env:"CODEXCTL_DEV_SLOTS_MAX"`
 	// CodeRootBase is the workspace base from CODEXCTL_CODE_ROOT_BASE.
 	CodeRootBase string `env:"CODEXCTL_CODE_ROOT_BASE"`
+	// WorkspaceMount is the PVC mount root from CODEXCTL_WORKSPACE_MOUNT.
+	WorkspaceMount string `env:"CODEXCTL_WORKSPACE_MOUNT"`
+	// WorkspacePVC is the workspace PVC name from CODEXCTL_WORKSPACE_PVC.
+	WorkspacePVC string `env:"CODEXCTL_WORKSPACE_PVC"`
+	// SyncImage is the sync helper image from CODEXCTL_SYNC_IMAGE.
+	SyncImage string `env:"CODEXCTL_SYNC_IMAGE"`
 	// Source is the sync source path from CODEXCTL_SOURCE.
 	Source string `env:"CODEXCTL_SOURCE"`
 	// PrepareImages toggles image prep from CODEXCTL_PREPARE_IMAGES.

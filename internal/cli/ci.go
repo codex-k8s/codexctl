@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -47,6 +48,7 @@ func newCISyncSourcesCommand(opts *Options) *cobra.Command {
 		Use:   "sync-sources",
 		Short: "Sync sources into the workspace for the selected environment",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
 			envCfg := ciEnv{}
 			if err := parseEnv(&envCfg); err != nil {
 				return err
@@ -71,11 +73,49 @@ func newCISyncSourcesCommand(opts *Options) *cobra.Command {
 			if envName == "" {
 				envName = "ai"
 			}
-			target, err := resolveSourceTarget(envName, slot, codeRootBase)
+			stackCfg, ctxData, _, _, err := loadStackConfigFromCmd(opts, cmd, slot)
 			if err != nil {
 				return err
 			}
-			return syncSources(source, target)
+			if strings.TrimSpace(ctxData.Namespace) == "" {
+				return fmt.Errorf("sync-sources requires a resolved namespace")
+			}
+
+			envCfgResolved, err := config.ResolveEnvironment(stackCfg, envName)
+			if err != nil {
+				return err
+			}
+			applyKubeconfigOverride(&envCfgResolved)
+
+			workspaceMount := strings.TrimSpace(envCfg.WorkspaceMount)
+			if workspaceMount == "" {
+				workspaceMount = "/workspace"
+			}
+			workspacePVC := strings.TrimSpace(envCfg.WorkspacePVC)
+			if workspacePVC == "" && stackCfg != nil {
+				workspacePVC = fmt.Sprintf("%s-workspace", stackCfg.Project)
+			}
+
+			targetRel, err := resolveWorkspaceRelativeTarget(envName, slot, codeRootBase, workspaceMount)
+			if err != nil {
+				return err
+			}
+			targetPath := filepath.Join(workspaceMount, targetRel)
+
+			kubeClient := kube.NewClient(envCfgResolved.Kubeconfig, envCfgResolved.Context)
+			if err := syncSources(cmd.Context(), logger, source, syncTarget{
+				Namespace:  ctxData.Namespace,
+				PVCName:    workspacePVC,
+				MountPath:  workspaceMount,
+				TargetRel:  targetRel,
+				UID:        parseEnvInt("CODEXCTL_WORKSPACE_UID", 1000),
+				GID:        parseEnvInt("CODEXCTL_WORKSPACE_GID", 1000),
+				Image:      strings.TrimSpace(envCfg.SyncImage),
+				KubeClient: kubeClient,
+			}); err != nil {
+				return fmt.Errorf("sync sources to %q: %w", targetPath, err)
+			}
+			return nil
 		},
 	}
 

@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -17,7 +15,6 @@ import (
 
 	"github.com/codex-k8s/codexctl/internal/config"
 	"github.com/codex-k8s/codexctl/internal/kube"
-	"github.com/codex-k8s/codexctl/internal/stringsutil"
 )
 
 // Executor executes hook steps defined in services.yaml.
@@ -144,12 +141,8 @@ func (e *Executor) runBuiltin(ctx context.Context, step config.HookStep, stepCtx
 		return e.runKubectlWait(ctx, step, stepCtx)
 	case "github.comment":
 		return e.runGitHubComment(ctx, step, stepCtx)
-	case "codex.ensure-data-dirs":
-		return e.runEnsureDataDirs(ctx, step, stepCtx)
 	case "codex.ensure-codex-secrets":
 		return e.runEnsureCodexSecrets(ctx, step, stepCtx)
-	case "codex.check-dev-host-ports":
-		return e.runCheckDevHostPorts(ctx, step, stepCtx)
 	case "codex.reuse-dev-tls-secret":
 		return e.runReuseDevTLSSecret(ctx, step, stepCtx)
 	case "sleep":
@@ -292,40 +285,6 @@ func (e *Executor) RunPreflightBasic(ctx context.Context) error {
 	return e.runPreflight(ctx)
 }
 
-// runEnsureDataDirs creates and chmods configured data directories.
-func (e *Executor) runEnsureDataDirs(_ context.Context, step config.HookStep, stepCtx StepContext) error {
-	if stepCtx.Stack == nil {
-		return fmt.Errorf("codex.ensure-data-dirs requires stack configuration")
-	}
-	resolved := config.ResolveDataPaths(stepCtx.Stack)
-	if resolved.Root == "" && resolved.EnvDir == "" && len(resolved.Paths) == 0 {
-		e.logger.Info("no data paths configured; skipping", "step", step.Name)
-		return nil
-	}
-
-	dirs := make([]string, 0, len(resolved.Paths)+2)
-	if resolved.Root != "" {
-		dirs = append(dirs, resolved.Root)
-	}
-	if resolved.EnvDir != "" {
-		dirs = append(dirs, resolved.EnvDir)
-	}
-	dirs = append(dirs, resolved.Paths...)
-	dirs = stringsutil.DedupeStrings(dirs)
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("create data dir %q: %w", dir, err)
-		}
-	}
-	for _, dir := range dirs {
-		if err := os.Chmod(dir, 0o777); err != nil {
-			e.logger.Warn("failed to chmod data dir", "dir", dir, "error", err)
-		}
-	}
-	return nil
-}
-
 // runEnsureCodexSecrets ensures required secrets exist in the target namespace.
 func (e *Executor) runEnsureCodexSecrets(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
 	if stepCtx.KubeClient == nil {
@@ -365,50 +324,6 @@ func (e *Executor) runEnsureCodexSecrets(ctx context.Context, step config.HookSt
 		}); err != nil {
 			return fmt.Errorf("apply context7-secret: %w", err)
 		}
-	}
-
-	return nil
-}
-
-// runCheckDevHostPorts probes localhost ports and optional ingress host.
-func (e *Executor) runCheckDevHostPorts(ctx context.Context, step config.HookStep, stepCtx StepContext) error {
-	host := ""
-	if raw, ok := step.With["host"]; ok {
-		if v, ok := raw.(string); ok {
-			host = strings.TrimSpace(v)
-		}
-	}
-	if host == "" {
-		base := strings.TrimSpace(stepCtx.Template.BaseDomain["ai"])
-		if base != "" && stepCtx.Template.Slot > 0 {
-			host = fmt.Sprintf("dev-%d.%s", stepCtx.Template.Slot, base)
-		}
-	}
-
-	for _, port := range []int{80, 443} {
-		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", addr)
-		if err != nil {
-			e.logger.Warn("port not reachable on localhost", "port", port, "error", err)
-			continue
-		}
-		_ = conn.Close()
-	}
-
-	if host != "" {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1/", nil)
-		if err != nil {
-			e.logger.Warn("failed to build HTTP probe request", "host", host, "error", err)
-			return nil
-		}
-		req.Host = host
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			e.logger.Warn("HTTP probe via ingress failed", "host", host, "error", err)
-			return nil
-		}
-		_ = resp.Body.Close()
 	}
 
 	return nil

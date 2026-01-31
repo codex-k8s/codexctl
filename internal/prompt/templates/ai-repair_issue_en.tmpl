@@ -35,9 +35,9 @@ Core tools:
 - kubectl: logs/status/exec/port-forward. Use `-n {{ $stagingNs }}` unless the task requires otherwise.
 - codexctl: render/apply templated manifests from `services.yaml` and related manifest templates.
   - codexctl is invoked directly from PATH (not via ./codexctl).
-  - Docker is available only for image builds; push to the cluster registry or an external registry (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:5000" }}).
+  - Image builds use Kaniko in CI; push to the registry (CODEXCTL_REGISTRY_HOST={{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}).
   - When running codexctl, use `--skip-infra tls-issuer,echo-probe` (otherwise it hits cluster-scope access and localhost port checks).
-  - You are running in a pod; the Docker daemon is on the cluster node via /var/run/docker.sock, so localhost (if used) refers to the registry on the node/cluster, not the pod itself.
+  - You are running in a pod; there is no local Docker daemon. Trigger image builds through the CI workflows when needed.
   - For rendering use `codexctl render --env ai-staging ...` (confirm env in `services.yaml`).
   - For applying use ONLY filters `--only-services/--only-infra` (or `--skip-*`), never run `codexctl apply` without filters.
   - Never include the `codex` service in apply (otherwise a second Codex pod will be started).

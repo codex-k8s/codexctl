@@ -72,9 +72,9 @@
 - kubectl: логи и статус, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Только диагностика; манифесты через kubectl не применять.
 - codexctl: управление окружениями и dev/ai слотами (images/apply/ci/manage-env/prompt); рендер/применение шаблонизированных манифестов из `services.yaml`.
   - codexctl вызывается напрямую из PATH (не через ./codexctl).
-  - Docker доступен только для сборки образов; пуш в реестр кластера или внешний реестр (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:5000" }}).
+  - Сборка образов выполняется Kaniko в CI; пуш в реестр кластера (CODEXCTL_REGISTRY_HOST={{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}).
   - При запуске codexctl используйте `--skip-infra tls-issuer,echo-probe` (иначе упирается в cluster-scope и проверку локальных портов).
-  - Агент работает в pod; docker демон запущен на ноде кластера через /var/run/docker.sock, поэтому localhost:5000 относится к реестру на ноде/кластере, а не к самому pod.
+  - Агент работает в pod; локального Docker‑демона нет. Для сборки/пуша используйте CI‑воркфлоу.
   - Рендер: `codexctl render --env {{ .Env }} ...` (при необходимости — с `--only-services/--only-infra`).
   - Применение: используйте фильтры `--only-services/--only-infra` (или `--skip-*`), не запускайте `codexctl apply` без фильтров и не включайте сервис `codex`.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
@@ -113,7 +113,7 @@
 2) Внести изменения:
    - Следовать стилю кода и правилам проекта.
    - Группировать изменения логично и избегать лишнего.
-   - Если менялись код/контейнеры сервиса, увеличьте его версию в `services.yaml` (patch‑level), чтобы выполнялся docker-build после вызова `codexctl apply`.
+   - Если менялись код/контейнеры сервиса, увеличьте его версию в `services.yaml` (patch‑level), чтобы сборка Kaniko выполнялась в CI до применения манифестов.
 3) Проверить поведение:
    - Использовать `kubectl` для проверки логов и статуса подов/деплойментов.
    - Проверить эндпоинты (если есть) через `curl`/`httpie`.

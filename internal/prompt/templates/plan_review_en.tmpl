@@ -127,9 +127,9 @@ Tools:
 - kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Diagnostics only; do not apply manifests with kubectl.
 - codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt); render/apply templated manifests from `services.yaml`.
   - codexctl is invoked directly from PATH (not via ./codexctl).
-  - Docker is available only for image builds; images are pushed to the in-cluster or external registry (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:5000" }}).
+  - Image builds use Kaniko in CI; images are pushed to the registry (CODEXCTL_REGISTRY_HOST={{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}).
   - When running codexctl, use `--skip-infra tls-issuer,echo-probe` (otherwise it hits cluster-scope access and localhost port checks).
-  - The agent runs in a pod; the Docker daemon is on the cluster node via /var/run/docker.sock, so localhost:5000 refers to the node/cluster registry, not the pod itself.
+  - You are running in a pod; there is no local Docker daemon. Trigger image builds through the CI workflows when needed.
   - Render: `codexctl render --env {{ .Env }} ...` (use `--only-services/--only-infra` when needed).
   - Do not run apply during plan review; if you must reference it, use filters and avoid full apply and the `codex` service.
 - `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.

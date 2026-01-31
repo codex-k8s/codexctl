@@ -47,7 +47,7 @@
 
 - Go **>= 1.25.1** (см. `go.mod`).
 
-Инструкцию по подготовке VPS/self-hosted runner (microk8s, Docker, kubectl, gh, rsync и т.д.) см. в:
+Инструкцию по подготовке VPS/self-hosted runner (microk8s, kubectl, gh, kaniko и т.д.) см. в:
 https://github.com/codex-k8s/project-example/blob/main/README.md
 
 `codexctl` распространяется как Go‑CLI. При установленном Go‑toolchain его можно поставить командой:
@@ -69,23 +69,19 @@ go install github.com/codex-k8s/codexctl/cmd/codexctl@v42.42.42
 ## 🚨 Важно: зависимости от внешних бинарников
 
 Сейчас `codexctl` **зависит от внешних CLI‑утилит** и запускает их как подпроцессы. Это осознанно упрощает старт и
-интеграцию с существующими практиками (kubectl/gh/git/docker), но требует, чтобы эти бинарники были установлены и доступны
+интеграцию с существующими практиками (kubectl/gh/git/kaniko), но требует, чтобы эти бинарники были установлены и доступны
 в `PATH` (как на self-hosted runner, так и в контейнере с Codex).
 
 Минимально необходимые утилиты:
 
 - `kubectl` — применение/удаление манифестов, `wait`, диагностика (см. `internal/kube/*`, `hooks: kubectl.wait`);
 - `bash` — выполнение hook‑шагов `run:` (см. `internal/hooks/*`);
-- `docker` — `images mirror/build` (pull/tag/push/build) (см. `internal/cli/images.go`);
+- `kaniko` — сборка/зеркалирование образов (`images mirror/build`, см. `internal/cli/images.go`);
 - `git` — commit/push в PR‑флоу (см. `internal/cli/pr.go`);
 - `gh` — чтение/комментирование Issues/PR и GraphQL/REST вызовы (см. `internal/githubapi/*`, `internal/cli/*`).
 
-Опционально:
-
-- `rsync` — ускоряет синхронизацию исходников (если нет, используется более медленный fallback-копир) (см. `internal/cli/manage_env.go`).
-
-Проверка окружения: используйте `codexctl doctor` (он проверяет наличие `kubectl`, `bash`, `git`, `gh`, а также `docker`
-при наличии блока `images` в `services.yaml`, и предупреждает про отсутствие `rsync`).
+Проверка окружения: используйте `codexctl doctor` (он проверяет наличие `kubectl`, `bash`, `git`, `gh`, а также `kaniko`
+при наличии блока `images` в `services.yaml`).
 
 План на будущее: постепенно заменять часть внешних зависимостей на встроенные реализации (клиенты Kubernetes/GitHub/OCI,
 логика синхронизации и т.п.) через соответствующие SDK/библиотеки, чтобы уменьшить набор обязательных бинарников и сделать
@@ -205,7 +201,7 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 
 - Kubernetes‑кластер (отдельный от продакшена).
 - Доступный `kubectl` и kubeconfig для выбранного окружения.
-- Docker‑демон и (рекомендуемо) локальный реестр образов.
+- Kaniko executor (по умолчанию `/kaniko/executor`) и кластерный registry (`CODEXCTL_REGISTRY_HOST`).
 - Собранный бинарь `codexctl` в `PATH`.
 
 ### 📝 2.2. Минимальный `services.yaml` для проекта
@@ -213,10 +209,14 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 Простейший пример (в актуальном формате; см. также `services.yaml` в репозитории https://github.com/codex-k8s/project-example):
 
 ```yaml
-# {{- $codeRootBase := envOr "CODEXCTL_CODE_ROOT_BASE" "" -}}
-# {{- $slotCodeRoot := default $codeRootBase (printf "%s/slots" .ProjectRoot) -}}
-# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/ai-staging/src" $codeRootBase) "") .ProjectRoot -}}
-# {{- $dataRoot := default (envOr "CODEXCTL_DATA_ROOT" "") (printf "%s/.data" .ProjectRoot) -}}
+# {{- $workspaceMount := envOr "CODEXCTL_WORKSPACE_MOUNT" "/workspace" -}}
+# {{- $codeRootBase := envOr "CODEXCTL_CODE_ROOT_BASE" (printf "%s/codex/envs" $workspaceMount) -}}
+# {{- $codeRootRel := trimPrefix $codeRootBase (printf "%s/" $workspaceMount) -}}
+# {{- $devCodeRoot := printf "%s/dev/src" $codeRootRel -}}
+# {{- $slotCodeRoot := $codeRootRel -}}
+# {{- $aiStagingCodeRoot := printf "%s/ai-staging/src" $codeRootRel -}}
+# {{- $workspacePVC := envOr "CODEXCTL_WORKSPACE_PVC" (printf "%s-workspace" .Project) -}}
+# {{- $registryHost := envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) -}}
 
 project: project-example
 
@@ -240,10 +240,10 @@ codex:
     rollout: "30m"
 
 baseDomain:
-  dev: '{{ envOr "BASE_DOMAIN_DEV" "dev.example-domain.ru" }}'
-  ai-staging: '{{ envOr "BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru" }}'
-  ai: '{{ envOr "BASE_DOMAIN_AI" (envOr "BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru") }}'
-  ai-repair: '{{ envOr "BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru" }}'
+  dev: '{{ envOr "CODEXCTL_BASE_DOMAIN_DEV" "dev.example-domain.ru" }}'
+  ai-staging: '{{ envOr "CODEXCTL_BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru" }}'
+  ai: '{{ envOr "CODEXCTL_BASE_DOMAIN_AI" (envOr "CODEXCTL_BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru") }}'
+  ai-repair: '{{ envOr "CODEXCTL_BASE_DOMAIN_AI_STAGING" "ai-staging.example-domain.ru" }}'
 
 namespace:
   patterns:
@@ -252,12 +252,17 @@ namespace:
     ai: "{{ .Project }}-dev-{{ .Slot }}"
     ai-repair: "{{ .Project }}-ai-staging"
 
-registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
+registry: '{{ $registryHost }}'
 
-dataPaths:
-  root: '{{ $dataRoot }}'
-  envDir: '{{ ternary (eq .Env "ai") (printf "%s/slots/%d" $dataRoot .Slot) (printf "%s/%s" $dataRoot .Env) }}'
-  dirs: [postgres, redis]
+storage:
+  workspace:
+    size: "50Gi"
+    accessModes: ["ReadWriteMany"]
+    storageClass: '{{ envOr "CODEXCTL_STORAGE_CLASS_WORKSPACE" "" }}'
+  data:
+    size: "20Gi"
+    accessModes: ["ReadWriteOnce"]
+    storageClass: '{{ envOr "CODEXCTL_STORAGE_CLASS_DATA" "" }}'
 
 state:
   backend: configmap
@@ -282,7 +287,7 @@ images:
   postgres:
     type: external
     from: "docker.io/library/postgres:16-bookworm"
-    local: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/library/postgres:16-bookworm'
+    local: '{{ $registryHost }}/library/postgres:16-bookworm'
   # build‑образы сервисов описываются аналогично (dockerfile/context/buildArgs/tagTemplate)
 
 infrastructure:
@@ -299,10 +304,11 @@ services:
       - path: services/chat_backend/deploy.yaml
     overlays:
       ai:
-        hostMounts:
-          - name: go-src
-            hostPath: '{{ printf "%s/%d/src/services/chat_backend" $slotCodeRoot .Slot }}'
+        pvcMounts:
+          - name: workspace
+            claimName: '{{ $workspacePVC }}'
             mountPath: "/app"
+            subPath: '{{ printf "%s/%d/src/services/chat_backend" $slotCodeRoot .Slot }}'
         dropKinds: ["Ingress"]
 ```
 
@@ -338,7 +344,8 @@ codexctl apply --only-services django-backend,chat-backend,web-frontend --wait
 
 - `project` — код проекта, используется в namespace’ах и других шаблонах.
 - `envFiles` — список `.env`‑файлов с переменными окружения, которые подключаются при рендере.
-- `registry` — базовый адрес реестра (например, `localhost:5000`).
+- `registry` — базовый адрес реестра (например, `registry.<project>-ai-staging.svc.cluster.local:5000`).
+- `storage` — параметры PVC (workspace/data/registry).
 - `versions` — словарь версий (произвольные ключи, используются в шаблонах).
 
 ### 🤖 3.2. Блок `codex`
@@ -395,17 +402,9 @@ environments:
   dev:
     kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
-    localRegistry:
-      enabled: true
-      name: "project-example-registry"
-      port: 32000
   ai-staging:
     kubeconfig: "/home/runner/.kube/microk8s.config"
     imagePullPolicy: Always
-    localRegistry:
-      enabled: true
-      name: "project-example-registry"
-      port: 32000
   ai:
     from: "ai-staging"
     imagePullPolicy: IfNotPresent
@@ -415,7 +414,7 @@ environments:
 ```
 
 - `from` позволяет наследовать настройки (например, `ai` от `ai-staging`).
-- `localRegistry` описывает локальный реестр, в который будут пушиться образы при `images build`.
+- реестр образов задаётся через корневое поле `registry` и `CODEXCTL_REGISTRY_HOST`.
 
 ### 🖼️ 3.5. `images`
 
@@ -426,11 +425,11 @@ images:
   busybox:
     type: external
     from: 'docker.io/library/busybox:{{ index .Versions "busybox" }}'
-    local: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/library/busybox:{{ index .Versions "busybox" }}'
+    local: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}/library/busybox:{{ index .Versions "busybox" }}'
 
   chat-backend:
     type: build
-    repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
+    repository: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}/project-example/chat-backend'
     tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "ai-staging" .Env) (index .Versions "chat-backend") }}'
     dockerfile: 'services/chat_backend/Dockerfile'
     context: 'services/chat_backend'
@@ -482,41 +481,48 @@ infrastructure:
 Список приложений:
 
 ```yaml
-# {{- $codeRootBase := envOr "CODEXCTL_CODE_ROOT_BASE" "" -}}
-# {{- $slotCodeRoot := default $codeRootBase (printf "%s/slots" .ProjectRoot) -}}
-# {{- $stagingCodeRoot := default (ternary (ne $codeRootBase "") (printf "%s/ai-staging/src" $codeRootBase) "") .ProjectRoot -}}
+# {{- $workspaceMount := envOr "CODEXCTL_WORKSPACE_MOUNT" "/workspace" -}}
+# {{- $codeRootBase := envOr "CODEXCTL_CODE_ROOT_BASE" (printf "%s/codex/envs" $workspaceMount) -}}
+# {{- $codeRootRel := trimPrefix $codeRootBase (printf "%s/" $workspaceMount) -}}
+# {{- $slotCodeRoot := $codeRootRel -}}
+# {{- $aiStagingCodeRoot := printf "%s/ai-staging/src" $codeRootRel -}}
+# {{- $workspacePVC := envOr "CODEXCTL_WORKSPACE_PVC" (printf "%s-workspace" .Project) -}}
+# {{- $registryHost := envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) -}}
 
 services:
   - name: chat-backend
     manifests:
       - path: services/chat_backend/deploy.yaml
     image:
-      repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
+      repository: '{{ $registryHost }}/project-example/chat-backend'
       tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "ai-staging" .Env) (index .Versions "chat-backend") }}'
     overlays:
       dev:
-        hostMounts:
-          - name: go-src
-            hostPath: "{{ .ProjectRoot }}/services/chat_backend"
+        pvcMounts:
+          - name: workspace
+            claimName: '{{ $workspacePVC }}'
             mountPath: "/app"
+            subPath: '{{ printf "%s/services/chat_backend" $devCodeRoot }}'
       ai-staging:
-        hostMounts:
-          - name: go-src
-            hostPath: '{{ printf "%s/services/chat_backend" $stagingCodeRoot }}'
+        pvcMounts:
+          - name: workspace
+            claimName: '{{ $workspacePVC }}'
             mountPath: "/app"
+            subPath: '{{ printf "%s/services/chat_backend" $aiStagingCodeRoot }}'
       ai:
-        hostMounts:
-          - name: go-src
-            hostPath: '{{ printf "%s/%d/src/services/chat_backend" $slotCodeRoot .Slot }}'
+        pvcMounts:
+          - name: workspace
+            claimName: '{{ $workspacePVC }}'
             mountPath: "/app"
+            subPath: '{{ printf "%s/%d/src/services/chat_backend" $slotCodeRoot .Slot }}'
         dropKinds: ["Ingress"]
 ```
 
 - `manifests` — список YAML‑файлов для сервиса;
 - `image` — переопределение `image:` в манифестах (репозиторий/тэг);
-- `overlays` — настройки по окружениям (hostPath‑монтаж исходников, отключение ingress в AI-dev и т.п.).
-- `hostMounts` — список монтируемых директорий с хоста (локальные исходники для dev/AI-dev).
-  Опционально: `hostPathType` (по умолчанию `Directory`). Для `/var/run/docker.sock` используйте `Socket`.
+- `overlays` — настройки по окружениям (PVC‑монтаж исходников, отключение ingress в AI-dev и т.п.).
+- `pvcMounts` — список монтируемых путей из PVC (исходники для dev/AI-dev).
+  Опционально: `subPath` для таргетной директории внутри PVC.
 - `dropKinds` — список Kubernetes‑ресурсов (по kind), которые нужно выкинуть из рендера (например, Ingress в AI-dev).
 
 ---
@@ -741,18 +747,24 @@ codexctl pr detect
 Через функцию `envOr` эти переменные доступны в шаблонах:
 
 ```yaml
-registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
+registry: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}'
 ```
 
 Часто используемые переменные:
 
-- `KUBECONFIG` — путь до kubeconfig, если не задан в `environments.*.kubeconfig`;
-- `REGISTRY_HOST` — адрес реестра образов;
-- `CODEXCTL_CODE_ROOT_BASE` — базовый путь до каталогов с исходниками (на ноде/в CI), используется для вычисления путей:
-  - `slotCodeRoot` (например, `.../slots/<slot>/src/...`) и
-  - `stagingCodeRoot` (например, `.../ai-staging/src/...`),
-  которые затем применяются в `services.*.overlays.*.hostMounts` (см. заголовок‑комментарии в `services.yaml`).
-- `CODEXCTL_DATA_ROOT` — базовый путь до `.data` с данными Postgres/Redis/кеша/и т.д. (используется в `dataPaths.root` и `dataPaths.envDir`). Очищается при `manage-env cleanup` с `CODEXCTL_WITH_CONFIGMAP=true` (в AI-dev).
+- `CODEXCTL_KUBECONFIG` — путь до kubeconfig, если не задан в `environments.*.kubeconfig`;
+- `CODEXCTL_REGISTRY_HOST` — адрес реестра образов;
+- `CODEXCTL_WORKSPACE_MOUNT` — точка монтирования PVC с исходниками (обычно `/workspace`);
+- `CODEXCTL_CODE_ROOT_BASE` — базовый путь внутри workspace PVC, используется для вычисления путей:
+  - `slotCodeRoot` (например, `.../<slot>/src/...`) и
+  - `aiStagingCodeRoot` (например, `.../ai-staging/src/...`),
+  которые затем применяются в `services.*.overlays.*.pvcMounts` (см. заголовок‑комментарии в `services.yaml`).
+- `CODEXCTL_WORKSPACE_PVC`, `CODEXCTL_DATA_PVC`, `CODEXCTL_REGISTRY_PVC` — имена PVC;
+- `CODEXCTL_STORAGE_CLASS_WORKSPACE`, `CODEXCTL_STORAGE_CLASS_DATA`, `CODEXCTL_STORAGE_CLASS_REGISTRY` — StorageClass для PVC;
+- `CODEXCTL_BASE_DOMAIN_DEV`, `CODEXCTL_BASE_DOMAIN_AI_STAGING`, `CODEXCTL_BASE_DOMAIN_AI` — домены;
+- `CODEXCTL_SYNC_IMAGE` — образ для sync‑пода при копировании исходников;
+- `CODEXCTL_KANIKO_EXECUTOR` — путь к kaniko executor (по умолчанию `/kaniko/executor`);
+- `CODEXCTL_KANIKO_INSECURE`, `CODEXCTL_KANIKO_SKIP_TLS_VERIFY`, `CODEXCTL_KANIKO_SKIP_TLS_VERIFY_PULL` — флаги для работы с insecure/TLS‑невалидным registry.
 
 В GitHub Actions обычно задаются:
 
@@ -768,7 +780,7 @@ registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
 
 Ниже — примеры workflow’ов, которые используются в проекте‑примере (смотри также
 в репозитории project-example: `.github/workflows/*.yml`). Предполагается self-hosted runner, где уже установлены:
-`codexctl`, `kubectl`, `gh`, `rsync`, `docker`.
+`codexctl`, `kubectl`, `gh`, `kaniko`.
 
 ### 🚀 7.1. Deploy ai-staging (push в `main`)
 
@@ -783,7 +795,19 @@ env:
   CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
   CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_ENV:            ai-staging
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
@@ -819,14 +843,15 @@ jobs:
         env:
           CODEXCTL_MIRROR_IMAGES: true
           CODEXCTL_BUILD_IMAGES:  true
-          REGISTRY_HOST: localhost:5000
+          CODEXCTL_KANIKO_INSECURE:        true
+          CODEXCTL_KANIKO_SKIP_TLS_VERIFY: true
+          CODEXCTL_KANIKO_SKIP_TLS_VERIFY_PULL: true
         run: |
           set -euo pipefail
           codexctl ci images
 
       - name: "Apply ai-staging via codexctl 🚀"
         env:
-          KUBECONFIG:           /home/runner/.kube/microk8s.config
           NO_PROXY:             127.0.0.1,localhost,::1
           GITHUB_RUN_ID:        ${{ github.run_id }}
           CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -837,36 +862,6 @@ jobs:
         run: |
           set -euo pipefail
           codexctl ci apply
-
-  gc-registry:
-    needs: deploy
-    runs-on: self-hosted
-    environment: ai-staging
-    steps:
-      - name: "Checkout 📥"
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.CODEXCTL_GH_PAT }}
-
-      - name: "GC docker registry container 🗑️"
-        run: |
-          set -euo pipefail
-          NAME="${DOCKER_REGISTRY_CONTAINER:-project-example-registry}"
-          if ! docker ps --format '{{.Names}}' | grep -q "^${NAME}$"; then
-            echo "info: registry container ${NAME} not running" >&2
-            exit 0
-          fi
-          echo "info: running registry GC inside ${NAME} (--delete-untagged=true)" >&2
-          set +e
-          docker exec "${NAME}" registry garbage-collect /etc/docker/registry/config.yml --delete-untagged=true
-          RC=$?
-          set -e
-          if [[ $RC -ne 0 ]]; then
-            echo "warn: GC with --delete-untagged failed; retrying without flag" >&2
-            docker exec "${NAME}" registry garbage-collect /etc/docker/registry/config.yml || true
-          fi
-          echo "info: GC finished" >&2
-        shell: bash
 ```
 
 ### 🧭 7.2. AI Plan (планирование по Issue: лейбл `[ai-plan]`)
@@ -893,7 +888,19 @@ env:
   CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
   CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
@@ -1039,7 +1046,19 @@ env:
   CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
   CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
@@ -1148,7 +1167,19 @@ env:
   CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
   CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
@@ -1358,7 +1389,19 @@ env:
   CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
   CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
@@ -1445,7 +1488,19 @@ env:
   CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
   CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
@@ -1656,7 +1711,19 @@ env:
   CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
   CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
   CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
-  CODEXCTL_DATA_ROOT:      ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
@@ -1679,7 +1746,6 @@ jobs:
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
       GITHUB_RUN_ID:        ${{ github.run_id }}
-      KUBECONFIG:           /home/runner/.kube/microk8s.config
       OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
       CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
     steps:
@@ -1765,7 +1831,19 @@ on:
     types: [closed]
 
 env:
-  CODEXCTL_DATA_ROOT:     ${{ vars.CODEXCTL_DATA_ROOT }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_WORKSPACE_UID: ${{ vars.CODEXCTL_WORKSPACE_UID }}
   CODEXCTL_WORKSPACE_GID: ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_PR_NUMBER:     ${{ github.event.pull_request.number || '' }}
@@ -1827,9 +1905,9 @@ jobs:
 - `CODEXCTL_GH_PAT` — PAT пользователя‑бота GitHub;
 - `CODEXCTL_GH_USERNAME` — имя пользователя‑бота; Не используйте личный аккаунт разработчика, создайте отдельный технический аккаунт.
 - `CODEXCTL_GH_EMAIL` — email пользователя‑бота для git‑коммитов (например, `codex-bot@example.com`).
-- `KUBECONFIG`/пути к kubeconfig для ai-staging;
+- `CODEXCTL_KUBECONFIG` — путь к kubeconfig для ai-staging;
 - секреты БД/Redis/кеша/очереди (username/password, DSN и т.п.);
-- `REGISTRY_HOST` и (опционально) реквизиты доступа к реестру.
+- `CODEXCTL_REGISTRY_HOST` и (опционально) реквизиты доступа к реестру.
 - `OPENAI_API_KEY` — API‑ключ OpenAI.
 - `CONTEXT7_API_KEY` — API‑ключ для Context7 (если используется).
 - `CODEXCTL_ALLOWED_USERS` (vars) — список разрешённых GitHub‑пользователей, в формате `user1,user2,user3`.
@@ -1857,12 +1935,11 @@ jobs:
 - Go toolchain + плагины (`protoc-gen-go`, `protoc-gen-go-grpc`, `wire`);
 - `protoc` и стандартные include’ы;
 - Python + виртуальное окружение с базовыми библиотеками (`requests`, `httpx`, `redis`, `psycopg[binary]`, `PyYAML`, `ujson`);
-- `kubectl`, `gh`, `jq`, `ripgrep`, `rsync`;
-- `docker` CLI для сборки/пуша образов (демон работает на ноде через смонтированный сокет);
+- `kubectl`, `gh`, `jq`, `ripgrep`;
 - сборка `codexctl` и установка бинаря в `/usr/local/bin`.
 
 Почему это важно: Codex‑агент работает внутри Kubernetes pod’а и не имеет доступа
-к инструментам хоста. Отсутствие бинарников (kubectl/gh/docker/rsync/protoc и т.д.)
+к инструментам хоста. Отсутствие бинарников (kubectl/gh/protoc и т.д.)
 ломает preflight‑проверки и блокирует apply/build/test сценарии.
 
 Такой образ можно указать в `images.codex` и использовать в `services.codex` внутри `services.yaml` вашего проекта
