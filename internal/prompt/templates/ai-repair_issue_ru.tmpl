@@ -35,7 +35,7 @@
 - kubectl: логи/статусы/exec/port-forward. Для работы используй `-n {{ $stagingNs }}`, если задача не требует иного.
 - codexctl: рендер/применение шаблонизированных манифестов из `services.yaml` и связанных шаблонов манифестов.
   - codexctl вызывается напрямую из PATH (не через ./codexctl).
-  - Docker доступен только для сборки образов; пуш в реестр кластера или внешний реестр (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:32000" }}).
+  - Docker доступен только для сборки образов; пуш в реестр кластера или внешний реестр (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:5000" }}).
   - При запуске codexctl используйте `--skip-infra tls-issuer,echo-probe` (иначе упирается в cluster-scope и проверку локальных портов).
   - Вы работаете в pod; docker демон запущен на ноде кластера через /var/run/docker.sock, поэтому localhost, если указан, относится к реестру на ноде/кластере, а не к самому pod.
   - Для рендера используй `codexctl render --env staging ...` (env уточняй в `services.yaml`).

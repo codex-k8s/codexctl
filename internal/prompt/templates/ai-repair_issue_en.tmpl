@@ -35,7 +35,7 @@ Core tools:
 - kubectl: logs/status/exec/port-forward. Use `-n {{ $stagingNs }}` unless the task requires otherwise.
 - codexctl: render/apply templated manifests from `services.yaml` and related manifest templates.
   - codexctl is invoked directly from PATH (not via ./codexctl).
-  - Docker is available only for image builds; push to the cluster registry or an external registry (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:32000" }}).
+  - Docker is available only for image builds; push to the cluster registry or an external registry (REGISTRY_HOST={{ envOr "REGISTRY_HOST" "localhost:5000" }}).
   - When running codexctl, use `--skip-infra tls-issuer,echo-probe` (otherwise it hits cluster-scope access and localhost port checks).
   - You are running in a pod; the Docker daemon is on the cluster node via /var/run/docker.sock, so localhost (if used) refers to the registry on the node/cluster, not the pod itself.
   - For rendering use `codexctl render --env staging ...` (confirm env in `services.yaml`).

@@ -144,9 +144,9 @@ type ImageSpec struct {
 	// (e.g. "docker.io/library/busybox:1.37.0").
 	From string `yaml:"from,omitempty"`
 	// Local is the full local image reference in the development registry
-	// (e.g. "localhost:32000/library/busybox:1.37.0").
+	// (e.g. "localhost:5000/library/busybox:1.37.0").
 	Local string `yaml:"local,omitempty"`
-	// Repository is the base image repository (e.g. "localhost:32000/your-project/django-backend")
+	// Repository is the base image repository (e.g. "localhost:5000/your-project/django-backend")
 	// used primarily for build images.
 	Repository string `yaml:"repository,omitempty"`
 	// Tag is an optional explicit tag string for build images when templating is not needed.

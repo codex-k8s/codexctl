@@ -252,7 +252,7 @@ namespace:
     ai: "{{ .Project }}-dev-{{ .Slot }}"
     ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
 
-registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
+registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
 
 dataPaths:
   root: '{{ $dataRoot }}'
@@ -282,7 +282,7 @@ images:
   postgres:
     type: external
     from: "docker.io/library/postgres:16-bookworm"
-    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/postgres:16-bookworm'
+    local: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/library/postgres:16-bookworm'
   # build‑образы сервисов описываются аналогично (dockerfile/context/buildArgs/tagTemplate)
 
 infrastructure:
@@ -338,7 +338,7 @@ codexctl apply --only-services django-backend,chat-backend,web-frontend --wait
 
 - `project` — код проекта, используется в namespace’ах и других шаблонах.
 - `envFiles` — список `.env`‑файлов с переменными окружения, которые подключаются при рендере.
-- `registry` — базовый адрес реестра (например, `localhost:32000`).
+- `registry` — базовый адрес реестра (например, `localhost:5000`).
 - `versions` — словарь версий (произвольные ключи, используются в шаблонах).
 
 ### 🤖 3.2. Блок `codex`
@@ -426,11 +426,11 @@ images:
   busybox:
     type: external
     from: 'docker.io/library/busybox:{{ index .Versions "busybox" }}'
-    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/busybox:{{ index .Versions "busybox" }}'
+    local: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/library/busybox:{{ index .Versions "busybox" }}'
 
   chat-backend:
     type: build
-    repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/project-example/chat-backend'
+    repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
     tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
     dockerfile: 'services/chat_backend/Dockerfile'
     context: 'services/chat_backend'
@@ -491,7 +491,7 @@ services:
     manifests:
       - path: services/chat_backend/deploy.yaml
     image:
-      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/project-example/chat-backend'
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
       tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
     overlays:
       dev:
@@ -741,7 +741,7 @@ codexctl pr detect
 Через функцию `envOr` эти переменные доступны в шаблонах:
 
 ```yaml
-registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
+registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
 ```
 
 Часто используемые переменные:
@@ -819,7 +819,7 @@ jobs:
         env:
           CODEXCTL_MIRROR_IMAGES: true
           CODEXCTL_BUILD_IMAGES:  true
-          REGISTRY_HOST: localhost:32000
+          REGISTRY_HOST: localhost:5000
         run: |
           set -euo pipefail
           codexctl ci images

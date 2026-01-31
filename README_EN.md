@@ -260,7 +260,7 @@ namespace:
     ai: "{{ .Project }}-dev-{{ .Slot }}"
     ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
 
-registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
+registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
 
 dataPaths:
   root: '{{ $dataRoot }}'
@@ -290,7 +290,7 @@ images:
   postgres:
     type: external
     from: "docker.io/library/postgres:16-bookworm"
-    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/postgres:16-bookworm'
+    local: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/library/postgres:16-bookworm'
   # Service build images are described similarly (dockerfile/context/buildArgs/tagTemplate)
 
 infrastructure:
@@ -346,7 +346,7 @@ When using GitHub Actions, this cycle is embedded into the workflow — see the 
 
 - `project` — project code, used in namespaces and other templates.
 - `envFiles` — a list of `.env` files with environment variables that are loaded during rendering.
-- `registry` — the base registry address (e.g. `localhost:32000`).
+- `registry` — the base registry address (e.g. `localhost:5000`).
 - `versions` — a version dictionary (arbitrary keys, used in templates).
 
 ### 🤖 3.2. The `codex` block
@@ -434,11 +434,11 @@ images:
   busybox:
     type: external
     from: 'docker.io/library/busybox:{{ index .Versions "busybox" }}'
-    local: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/library/busybox:{{ index .Versions "busybox" }}'
+    local: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/library/busybox:{{ index .Versions "busybox" }}'
 
   chat-backend:
     type: build
-    repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/project-example/chat-backend'
+    repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
     tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
     dockerfile: 'services/chat_backend/Dockerfile'
     context: 'services/chat_backend'
@@ -499,7 +499,7 @@ services:
     manifests:
       - path: services/chat_backend/deploy.yaml
     image:
-      repository: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}/project-example/chat-backend'
+      repository: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}/project-example/chat-backend'
       tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "staging" .Env) (index .Versions "chat-backend") }}'
     overlays:
       dev:
@@ -749,7 +749,7 @@ codexctl pr detect
 Via `envOr`, these variables are available in templates:
 
 ```yaml
-registry: '{{ envOr "REGISTRY_HOST" "localhost:32000" }}'
+registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
 ```
 
 Common variables:
@@ -827,7 +827,7 @@ jobs:
         env:
           CODEXCTL_MIRROR_IMAGES: true
           CODEXCTL_BUILD_IMAGES:  true
-          REGISTRY_HOST: localhost:32000
+          REGISTRY_HOST: localhost:5000
         run: |
           set -euo pipefail
           codexctl ci images
