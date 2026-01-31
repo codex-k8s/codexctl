@@ -108,8 +108,6 @@ func newCISyncSourcesCommand(opts *Options) *cobra.Command {
 				PVCName:    workspacePVC,
 				MountPath:  workspaceMount,
 				TargetRel:  targetRel,
-				UID:        parseEnvInt("CODEXCTL_WORKSPACE_UID", 1000),
-				GID:        parseEnvInt("CODEXCTL_WORKSPACE_GID", 1000),
 				Image:      strings.TrimSpace(envCfg.SyncImage),
 				KubeClient: kubeClient,
 			}); err != nil {

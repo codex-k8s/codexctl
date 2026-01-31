@@ -47,7 +47,7 @@
 
 - Go **>= 1.25.1** (см. `go.mod`).
 
-Инструкцию по подготовке VPS/self-hosted runner (microk8s, kubectl, gh, kaniko и т.д.) см. в:
+Инструкцию по запуску self‑hosted runner в Kubernetes (ARC, kubectl, gh, kaniko и т.д.) см. в:
 https://github.com/codex-k8s/project-example/blob/main/README.md
 
 `codexctl` распространяется как Go‑CLI. При установленном Go‑toolchain его можно поставить командой:
@@ -70,7 +70,7 @@ go install github.com/codex-k8s/codexctl/cmd/codexctl@v42.42.42
 
 Сейчас `codexctl` **зависит от внешних CLI‑утилит** и запускает их как подпроцессы. Это осознанно упрощает старт и
 интеграцию с существующими практиками (kubectl/gh/git/kaniko), но требует, чтобы эти бинарники были установлены и доступны
-в `PATH` (как на self-hosted runner, так и в контейнере с Codex).
+в `PATH` (в runner‑поде и в контейнере с Codex).
 
 Минимально необходимые утилиты:
 
@@ -87,7 +87,7 @@ go install github.com/codex-k8s/codexctl/cmd/codexctl@v42.42.42
 логика синхронизации и т.п.) через соответствующие SDK/библиотеки, чтобы уменьшить набор обязательных бинарников и сделать
 запуски более предсказуемыми.
 
-Практическую инструкцию по установке необходимых утилит на VPS для runner’а см. в:
+Практическую инструкцию по подготовке runner‑образа/runner‑пода см. в:
 https://github.com/codex-k8s/project-example/blob/main/README.md
 
 ---
@@ -201,7 +201,8 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 
 - Kubernetes‑кластер (отдельный от продакшена).
 - Доступный `kubectl` и kubeconfig для выбранного окружения.
-- Kaniko executor (по умолчанию `/kaniko/executor`) и кластерный registry (`CODEXCTL_REGISTRY_HOST`).
+- Kaniko executor (по умолчанию `/kaniko/executor`) и кластерный registry (по умолчанию `registry.<namespace>.svc.cluster.local:5000`,
+  при необходимости переопределяется через `CODEXCTL_REGISTRY_HOST`).
 - Собранный бинарь `codexctl` в `PATH`.
 
 ### 📝 2.2. Минимальный `services.yaml` для проекта
@@ -216,7 +217,7 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 # {{- $slotCodeRoot := $codeRootRel -}}
 # {{- $aiStagingCodeRoot := printf "%s/ai-staging/src" $codeRootRel -}}
 # {{- $workspacePVC := envOr "CODEXCTL_WORKSPACE_PVC" (printf "%s-workspace" .Project) -}}
-# {{- $registryHost := envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) -}}
+# {{- $registryHost := envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.local:5000" .Namespace) -}}
 
 project: project-example
 
@@ -274,7 +275,7 @@ environments:
     kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
   ai-staging:
-    kubeconfig: "/home/runner/.kube/microk8s.config"
+    kubeconfig: '{{ envOr "CODEXCTL_KUBECONFIG" "" }}'
     imagePullPolicy: Always
   ai:
     from: "ai-staging"
@@ -344,7 +345,7 @@ codexctl apply --only-services django-backend,chat-backend,web-frontend --wait
 
 - `project` — код проекта, используется в namespace’ах и других шаблонах.
 - `envFiles` — список `.env`‑файлов с переменными окружения, которые подключаются при рендере.
-- `registry` — базовый адрес реестра (например, `registry.<project>-ai-staging.svc.cluster.local:5000`).
+- `registry` — базовый адрес реестра (например, `registry.<namespace>.svc.cluster.local:5000`).
 - `storage` — параметры PVC (workspace/data/registry).
 - `versions` — словарь версий (произвольные ключи, используются в шаблонах).
 
@@ -403,7 +404,7 @@ environments:
     kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
   ai-staging:
-    kubeconfig: "/home/runner/.kube/microk8s.config"
+    kubeconfig: '{{ envOr "CODEXCTL_KUBECONFIG" "" }}'
     imagePullPolicy: Always
   ai:
     from: "ai-staging"
@@ -414,7 +415,7 @@ environments:
 ```
 
 - `from` позволяет наследовать настройки (например, `ai` от `ai-staging`).
-- реестр образов задаётся через корневое поле `registry` и `CODEXCTL_REGISTRY_HOST`.
+- реестр образов задаётся через корневое поле `registry`; при необходимости можно переопределить через `CODEXCTL_REGISTRY_HOST`.
 
 ### 🖼️ 3.5. `images`
 
@@ -425,11 +426,11 @@ images:
   busybox:
     type: external
     from: 'docker.io/library/busybox:{{ index .Versions "busybox" }}'
-    local: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}/library/busybox:{{ index .Versions "busybox" }}'
+    local: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.local:5000" .Namespace) }}/library/busybox:{{ index .Versions "busybox" }}'
 
   chat-backend:
     type: build
-    repository: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}/project-example/chat-backend'
+    repository: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.local:5000" .Namespace) }}/project-example/chat-backend'
     tagTemplate: '{{ printf "%s-%s" (ternary (eq .Env "ai") "ai-staging" .Env) (index .Versions "chat-backend") }}'
     dockerfile: 'services/chat_backend/Dockerfile'
     context: 'services/chat_backend'
@@ -487,7 +488,7 @@ infrastructure:
 # {{- $slotCodeRoot := $codeRootRel -}}
 # {{- $aiStagingCodeRoot := printf "%s/ai-staging/src" $codeRootRel -}}
 # {{- $workspacePVC := envOr "CODEXCTL_WORKSPACE_PVC" (printf "%s-workspace" .Project) -}}
-# {{- $registryHost := envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) -}}
+# {{- $registryHost := envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.local:5000" .Namespace) -}}
 
 services:
   - name: chat-backend
@@ -747,13 +748,13 @@ codexctl pr detect
 Через функцию `envOr` эти переменные доступны в шаблонах:
 
 ```yaml
-registry: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}'
+registry: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.local:5000" .Namespace) }}'
 ```
 
 Часто используемые переменные:
 
 - `CODEXCTL_KUBECONFIG` — путь до kubeconfig, если не задан в `environments.*.kubeconfig`;
-- `CODEXCTL_REGISTRY_HOST` — адрес реестра образов;
+- `CODEXCTL_REGISTRY_HOST` — адрес реестра образов (опционально, по умолчанию `registry.<namespace>.svc.cluster.local:5000`);
 - `CODEXCTL_WORKSPACE_MOUNT` — точка монтирования PVC с исходниками (обычно `/workspace`);
 - `CODEXCTL_CODE_ROOT_BASE` — базовый путь внутри workspace PVC, используется для вычисления путей:
   - `slotCodeRoot` (например, `.../<slot>/src/...`) и
@@ -779,8 +780,14 @@ registry: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc
 ## 🔐 7. Интеграция с GitHub Actions и секреты
 
 Ниже — примеры workflow’ов, которые используются в проекте‑примере (смотри также
-в репозитории project-example: `.github/workflows/*.yml`). Предполагается self-hosted runner, где уже установлены:
-`codexctl`, `kubectl`, `gh`, `kaniko`.
+в репозитории project-example: `.github/workflows/*.yml`). Предполагается только in‑cluster запуск
+self‑hosted runner’ов в Kubernetes (ARC), а label’ы runner’ов соответствуют окружениям:
+
+- `ai-staging` — деплой/repair в ai‑staging;
+- `ai` — AI‑dev слоты.
+
+В runner‑образе должны быть установлены `codexctl`, `kubectl`, `gh`, `kaniko`.
+Пример ARC values для двух групп runner’ов (`ai`/`ai-staging`) см. в README проекта‑примера.
 
 ### 🚀 7.1. Deploy ai-staging (push в `main`)
 
@@ -806,11 +813,8 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
   CODEXCTL_ENV:            ai-staging
-  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
 
 concurrency:
@@ -825,7 +829,7 @@ jobs:
       !contains(github.event.head_commit.message, '[skip-ci]') &&
       !contains(github.event.head_commit.message, '[no ci]') &&
       !contains(github.event.head_commit.message, '[no-ci]')
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai-staging]
     environment: ai-staging
     steps:
       - name: "Checkout project-example 📥"
@@ -899,10 +903,7 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
-  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
 
 concurrency:
@@ -915,7 +916,7 @@ jobs:
       github.event.label.name == '[ai-plan]' &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
     name: "Allocate plan slot 🧩"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     timeout-minutes: 360
     environment: ai-staging
     outputs:
@@ -940,7 +941,7 @@ jobs:
   deploy-ai-plan:
     needs: [create-ai-plan]
     name: "Deploy AI plan env 🚀"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     outputs:
       infra_ready: ${{ steps.ensure.outputs.infra_ready }}
@@ -974,7 +975,7 @@ jobs:
   run-codex-plan:
     needs: [create-ai-plan, deploy-ai-plan]
     name: "Run planning agent 🤖"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1004,7 +1005,7 @@ jobs:
       always() &&
       (needs.create-ai-plan.result != 'success' || needs.deploy-ai-plan.result != 'success' || needs.run-codex-plan.result != 'success')
     name: "Cleanup plan env on failure 🧹"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1057,10 +1058,7 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
-  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
 
 concurrency:
@@ -1074,7 +1072,7 @@ jobs:
       github.event.issue.pull_request == null &&
       contains(github.event.comment.body, '[ai-plan]') &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1178,10 +1176,7 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
-  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
 
 concurrency:
@@ -1192,7 +1187,7 @@ jobs:
   create-ai:
     name: "Allocate slot 🧩"
     if: github.event.label.name == '[ai-dev]' && contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     timeout-minutes: 360
     environment: ai-staging
     outputs:
@@ -1217,7 +1212,7 @@ jobs:
   deploy-ai:
     needs: [create-ai]
     name: "Deploy AI environment 🚀"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     outputs:
       infra_ready: ${{ steps.ensure.outputs.infra_ready }}
@@ -1251,7 +1246,7 @@ jobs:
   run-codex:
     needs: [create-ai, deploy-ai]
     name: "Run dev agent 🤖"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1348,7 +1343,7 @@ jobs:
       always() &&
       (needs.create-ai.result != 'success' || needs.deploy-ai.result != 'success' || needs.run-codex.result != 'success')
     name: "Cleanup on failure 🧹"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1400,10 +1395,7 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
-  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
   CODEXCTL_BRANCH:         ${{ github.event.pull_request.head.ref }}
   CODEXCTL_REPO:           ${{ github.repository }}
@@ -1418,7 +1410,7 @@ jobs:
     if: >-
       github.event.review.state == 'changes_requested' &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1499,10 +1491,7 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
-  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_REPO:           ${{ github.repository }}
 
 concurrency:
@@ -1515,7 +1504,7 @@ jobs:
     if: >-
       github.event.label.name == '[ai-repair]' &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai-staging]
     timeout-minutes: 360
     environment: ai-staging
     outputs:
@@ -1540,7 +1529,7 @@ jobs:
   deploy-ai-repair:
     needs: [create-ai-repair]
     name: "Deploy ai-staging repair env 🚀"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai-staging]
     environment: ai-staging
     steps:
       - name: "Checkout project-example 📥"
@@ -1581,7 +1570,7 @@ jobs:
   run-codex:
     needs: [create-ai-repair, deploy-ai-repair]
     name: "Run ai-staging repair agent 🤖"
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai-staging]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1722,10 +1711,7 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
-  CODEXCTL_WORKSPACE_UID:  ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID:  ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_PR_NUMBER:      ${{ github.event.pull_request.number }}
   CODEXCTL_BRANCH:         ${{ github.event.pull_request.head.ref }}
   CODEXCTL_REPO:           ${{ github.repository }}
@@ -1741,7 +1727,7 @@ jobs:
       github.event.review.state == 'changes_requested' &&
       startsWith(github.event.pull_request.head.ref, 'codex/ai-repair-') &&
       contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
-    runs-on: self-hosted
+    runs-on: [self-hosted, ai-staging]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1842,10 +1828,7 @@ env:
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
   CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
-  CODEXCTL_REGISTRY_HOST:   ${{ vars.CODEXCTL_REGISTRY_HOST }}
   CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
-  CODEXCTL_WORKSPACE_UID: ${{ vars.CODEXCTL_WORKSPACE_UID }}
-  CODEXCTL_WORKSPACE_GID: ${{ vars.CODEXCTL_WORKSPACE_GID }}
   CODEXCTL_PR_NUMBER:     ${{ github.event.pull_request.number || '' }}
   CODEXCTL_BRANCH:        ${{ github.event.pull_request.head.ref || '' }}
   CODEXCTL_REPO:          ${{ github.repository }}
@@ -1855,9 +1838,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  cleanup:
-    name: "Cleanup AI environments 🧼"
-    runs-on: self-hosted
+  cleanup-ai:
+    name: "Cleanup AI slots 🧼"
+    runs-on: [self-hosted, ai]
     environment: ai-staging
     env:
       CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1867,33 +1850,87 @@ jobs:
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
 
-      - name: "Cleanup for PR closed 🧹"
+      - name: "Cleanup AI slot for PR closed 🧹"
         if: github.event_name == 'pull_request'
         env:
+          CODEXCTL_ENV: ai
+          CODEXCTL_PR_NUMBER: ${{ github.event.pull_request.number }}
           CODEXCTL_WITH_CONFIGMAP: true
-          CODEXCTL_DELETE_BRANCH: true
         run: |
           set -euo pipefail
-          codexctl manage-env cleanup-pr
+          codexctl manage-env cleanup
+
+      - name: "Cleanup AI slot for Issue closed 🧹"
+        if: github.event_name == 'issues'
+        env:
+          CODEXCTL_ENV: ai
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup
+
+      - name: "Delete PR branch 🧹"
+        if: github.event_name == 'pull_request'
+        env:
+          CODEXCTL_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          codexctl manage-env delete-branch
 
       - name: "Close linked Issue after merge ✅"
         if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
         env:
-          CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
           CODEXCTL_CLOSE_ISSUE: true
         run: |
           set -euo pipefail
           codexctl manage-env close-linked-issue
 
-      - name: "Cleanup for Issue closed 🧹"
+      - name: "Delete Issue branches 🧹"
         if: github.event_name == 'issues'
         env:
-          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
-          CODEXCTL_WITH_CONFIGMAP: true
-          CODEXCTL_DELETE_BRANCH: true
+          CODEXCTL_BRANCH: codex/issue-${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          codexctl manage-env cleanup-issue
+          codexctl manage-env delete-branch
+
+      - name: "Delete AI-repair branch for Issue 🧹"
+        if: github.event_name == 'issues'
+        env:
+          CODEXCTL_BRANCH: codex/ai-repair-${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          codexctl manage-env delete-branch
+
+  cleanup-ai-staging:
+    name: "Cleanup ai-staging repair envs 🧼"
+    runs-on: [self-hosted, ai-staging]
+    environment: ai-staging
+    steps:
+      - name: "Checkout project-example 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Cleanup ai-staging repair env for PR closed 🧹"
+        if: github.event_name == 'pull_request'
+        env:
+          CODEXCTL_ENV: ai-repair
+          CODEXCTL_PR_NUMBER: ${{ github.event.pull_request.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup
+
+      - name: "Cleanup ai-staging repair env for Issue closed 🧹"
+        if: github.event_name == 'issues'
+        env:
+          CODEXCTL_ENV: ai-repair
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup
 ```
 
 Полный пример см. в репозитории project-example: `.github/workflows/ai_cleanup.yml`.
@@ -1905,7 +1942,7 @@ jobs:
 - `CODEXCTL_GH_PAT` — PAT пользователя‑бота GitHub;
 - `CODEXCTL_GH_USERNAME` — имя пользователя‑бота; Не используйте личный аккаунт разработчика, создайте отдельный технический аккаунт.
 - `CODEXCTL_GH_EMAIL` — email пользователя‑бота для git‑коммитов (например, `codex-bot@example.com`).
-- `CODEXCTL_KUBECONFIG` — путь к kubeconfig для ai-staging;
+- `CODEXCTL_KUBECONFIG` — путь к kubeconfig внутри runner‑пода (если не используется `~/.kube/config`);
 - секреты БД/Redis/кеша/очереди (username/password, DSN и т.п.);
 - `CODEXCTL_REGISTRY_HOST` и (опционально) реквизиты доступа к реестру.
 - `OPENAI_API_KEY` — API‑ключ OpenAI.

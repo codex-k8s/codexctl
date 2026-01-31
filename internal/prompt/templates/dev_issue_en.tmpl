@@ -72,7 +72,7 @@ Core tools you can use:
 - kubectl: read logs and status, port-forwarding (pods/log, exec, portforward), deployments/services/ingress. Diagnostics only; do not apply manifests with kubectl.
 - codexctl: manage environments and dev/ai slots (images/apply/ci/manage-env/prompt); render/apply templated manifests from `services.yaml`.
   - codexctl is invoked directly from PATH (not via ./codexctl).
-  - Image builds use Kaniko in CI; images are pushed to the registry (CODEXCTL_REGISTRY_HOST={{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s-ai-staging.svc.cluster.local:5000" .Project) }}).
+  - Image builds use Kaniko in CI; images are pushed to the registry (CODEXCTL_REGISTRY_HOST={{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.local:5000" .Namespace) }}).
   - When running codexctl, use `--skip-infra tls-issuer,echo-probe` (avoids cluster-scope access and localhost port checks).
   - You are running in a pod; there is no local Docker daemon. Trigger image builds through the CI workflows when needed.
   - Render: `codexctl render --env {{ .Env }} ...` (use `--only-services/--only-infra` when needed).

@@ -35,6 +35,7 @@ func newManageEnvCommand(opts *Options) *cobra.Command {
 		newManageEnvCleanupPRCommand(opts),
 		newManageEnvCleanupIssueCommand(opts),
 		newManageEnvCloseLinkedIssueCommand(opts),
+		newManageEnvDeleteBranchCommand(opts),
 		newManageEnvSetCommand(opts),
 		newManageEnvCommentCommand(opts),
 		newManageEnvCommentPRCommand(opts),
@@ -342,6 +343,59 @@ func newManageEnvCloseLinkedIssueCommand(opts *Options) *cobra.Command {
 	return cmd
 }
 
+// newManageEnvDeleteBranchCommand deletes a GitHub branch by name.
+func newManageEnvDeleteBranchCommand(_ *Options) *cobra.Command {
+	var (
+		branch string
+		repo   string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "delete-branch",
+		Short: "Delete a GitHub branch by name",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger := LoggerFromContext(cmd.Context())
+			envCfg := cleanupGHEnv{}
+			if err := parseEnv(&envCfg); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("branch") && envPresent("CODEXCTL_BRANCH") {
+				branch = strings.TrimSpace(envCfg.Branch)
+			}
+			if !cmd.Flags().Changed("repo") && envPresent("CODEXCTL_REPO") {
+				repo = strings.TrimSpace(envCfg.Repo)
+			}
+			if branch == "" {
+				return fmt.Errorf("branch must be specified")
+			}
+
+			repo = resolveGitHubRepo(repo)
+			if repo == "" {
+				logger.Warn("repository is empty; skipping branch deletion", "branch", branch)
+				return nil
+			}
+
+			token, err := lookupGitHubToken()
+			if err != nil {
+				logger.Warn("GitHub token missing; skipping branch deletion", "error", err)
+				return nil
+			}
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancel()
+			if err := deleteGitBranch(ctx, logger, token, repo, branch); err != nil {
+				logger.Warn("failed to delete branch", "branch", branch, "error", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&branch, "branch", "", "Branch ref to delete")
+	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository slug owner/repo (defaults to CODEXCTL_REPO)")
+
+	return cmd
+}
+
 // syncTarget describes a PVC-backed workspace sync target.
 type syncTarget struct {
 	// Namespace is the Kubernetes namespace hosting the workspace PVC.
@@ -352,10 +406,6 @@ type syncTarget struct {
 	MountPath string
 	// TargetRel is the relative path inside the PVC.
 	TargetRel string
-	// UID is the user ID for sync pod file ownership.
-	UID int
-	// GID is the group ID for sync pod file ownership.
-	GID int
 	// Image is the container image used by the sync pod.
 	Image string
 	// KubeClient is the Kubernetes client used for sync operations.
@@ -442,12 +492,6 @@ type syncPodTemplateData struct {
 	MountPath string
 	// PVCName is the PVC name to mount.
 	PVCName string
-	// FSGroup is the pod-level fsGroup.
-	FSGroup int
-	// RunAsUser is the container runAsUser UID.
-	RunAsUser int
-	// RunAsGroup is the container runAsGroup GID.
-	RunAsGroup int
 }
 
 // syncPodTemplateEngine renders the sync pod YAML manifest.
@@ -461,28 +505,17 @@ var syncPodTemplateEngine = template.Must(
 
 // buildSyncPodYAML builds a pod manifest for workspace syncing.
 func buildSyncPodYAML(podName string, target syncTarget) ([]byte, error) {
-	uid := target.UID
-	gid := target.GID
-	if uid <= 0 {
-		uid = 1000
-	}
-	if gid <= 0 {
-		gid = 1000
-	}
 	image := strings.TrimSpace(target.Image)
 	if image == "" {
 		image = "busybox:1.37.0"
 	}
 
 	data := syncPodTemplateData{
-		PodName:    podName,
-		Namespace:  target.Namespace,
-		Image:      image,
-		MountPath:  target.MountPath,
-		PVCName:    target.PVCName,
-		FSGroup:    gid,
-		RunAsUser:  uid,
-		RunAsGroup: gid,
+		PodName:   podName,
+		Namespace: target.Namespace,
+		Image:     image,
+		MountPath: target.MountPath,
+		PVCName:   target.PVCName,
 	}
 	var buf bytes.Buffer
 	if err := syncPodTemplateEngine.Execute(&buf, data); err != nil {
@@ -544,19 +577,6 @@ func kubectlCopyToPod(ctx context.Context, client *kube.Client, namespace, pod, 
 		return fmt.Errorf("kubectl cp failed: %w", err)
 	}
 	return nil
-}
-
-// parseEnvInt reads an integer environment variable with a default fallback.
-func parseEnvInt(key string, def int) int {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
-		return def
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil {
-		return def
-	}
-	return value
 }
 
 // newManageEnvSetCommand creates "manage-env set" to patch issue/pr fields for a slot.

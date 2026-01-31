@@ -232,8 +232,6 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 			PVCName:    workspacePVC,
 			MountPath:  workspaceMount,
 			TargetRel:  targetRel,
-			UID:        parseEnvInt("CODEXCTL_WORKSPACE_UID", 1000),
-			GID:        parseEnvInt("CODEXCTL_WORKSPACE_GID", 1000),
 			Image:      syncImg,
 			KubeClient: slotRes.store.kubeClient,
 		}); err != nil {
