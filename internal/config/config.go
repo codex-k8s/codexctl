@@ -110,16 +110,14 @@ type NamespaceBlock struct {
 	Patterns map[string]string `yaml:"patterns,omitempty"`
 }
 
-// Environment describes environment-level Kubernetes connection and behavior.
+// Environment describes environment-level Kubernetes behavior.
 type Environment struct {
-	// Kubeconfig is the path to the kubeconfig file to use.
-	Kubeconfig string `yaml:"kubeconfig,omitempty"`
-	// Context selects the kubeconfig context name.
-	Context string `yaml:"context,omitempty"`
 	// From references another environment to inherit from.
 	From string `yaml:"from,omitempty"`
 	// ImagePullPolicy overrides the default pull policy for workloads.
 	ImagePullPolicy string `yaml:"imagePullPolicy,omitempty"`
+	// SlotBootstrapInfra lists infra groups to apply right after slot creation.
+	SlotBootstrapInfra []string `yaml:"slotBootstrapInfra,omitempty"`
 	// LocalRegistry configures an optional local registry for dev.
 	LocalRegistry *LocalRegistrySpec `yaml:"localRegistry,omitempty"`
 }
@@ -611,14 +609,11 @@ func ResolveEnvironment(cfg *StackConfig, name string) (Environment, error) {
 		}
 
 		merged := base
-		if envCfg.Kubeconfig != "" {
-			merged.Kubeconfig = envCfg.Kubeconfig
-		}
-		if envCfg.Context != "" {
-			merged.Context = envCfg.Context
-		}
 		if envCfg.ImagePullPolicy != "" {
 			merged.ImagePullPolicy = envCfg.ImagePullPolicy
+		}
+		if len(envCfg.SlotBootstrapInfra) > 0 {
+			merged.SlotBootstrapInfra = append([]string(nil), envCfg.SlotBootstrapInfra...)
 		}
 		if envCfg.LocalRegistry != nil {
 			merged.LocalRegistry = envCfg.LocalRegistry

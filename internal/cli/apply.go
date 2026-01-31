@@ -83,8 +83,7 @@ func applyStack(
 	machineOutput bool,
 	renderOpts engine.RenderOptions,
 ) error {
-	applyKubeconfigOverride(&envCfg)
-	kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+	kubeClient := kube.NewClient()
 	kubeClient.StdoutToStderr = machineOutput
 
 	// Ensure target namespace exists before running hooks or applying manifests.

@@ -136,7 +136,7 @@ The same context is also used by:
 - `ai-staging` — a ai-staging cluster (CI/CD, close to production);
 - `ai` — AI-dev slots: isolated namespaces like `<project>-dev-<slot>` (for example, `codex-project-dev-<slot>`),
   with domains `dev-<slot>.ai-staging.<domain>`, where Codex agents work on tasks/PRs.
-- `ai-repair` — a Codex Pod in the ai-staging namespace with RBAC only for the required resources (recovery/repair).
+- `ai-repair` — a Codex Pod in the ai-staging namespace with full RBAC within the namespace (recovery/repair).
 
 Slots (`slot`) are numeric identifiers for AI-dev environments managed by `codexctl ci ensure-slot/ensure-ready`. For each
 slot, the following is created and maintained:
@@ -208,7 +208,7 @@ How this is used in agent instructions:
 ### ✅ 2.1. Requirements
 
 - A Kubernetes cluster (separate from production).
-- `kubectl` and kubeconfig available for the selected environment.
+- `kubectl` available for the selected environment (in-cluster service account).
 - A Kaniko executor (defaults to `/kaniko/executor`) and a cluster registry (defaults to `registry.<namespace>.svc.cluster.local:5000`,
   override via `CODEXCTL_REGISTRY_HOST` when needed).
 - The `codexctl` binary in `PATH`.
@@ -279,10 +279,8 @@ state:
 
 environments:
   dev:
-    kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
   ai-staging:
-    kubeconfig: '{{ envOr "CODEXCTL_KUBECONFIG" "" }}'
     imagePullPolicy: Always
   ai:
     from: "ai-staging"
@@ -408,10 +406,8 @@ Cluster connection configuration:
 ```yaml
 environments:
   dev:
-    kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
   ai-staging:
-    kubeconfig: '{{ envOr "CODEXCTL_KUBECONFIG" "" }}'
     imagePullPolicy: Always
   ai:
     from: "ai-staging"
@@ -423,6 +419,7 @@ environments:
 
 - `from` allows inheriting settings (e.g. `ai` from `ai-staging`).
 - the registry is configured via the top-level `registry` field; override with `CODEXCTL_REGISTRY_HOST` if needed.
+- `slotBootstrapInfra` — infra groups applied right after slot creation by `ci ensure-slot` (for example, RBAC).
 
 ### 🖼️ 3.5. `images`
 
@@ -761,7 +758,6 @@ registry: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.lo
 
 Common variables:
 
-- `CODEXCTL_KUBECONFIG` — path to kubeconfig if not set in `environments.*.kubeconfig`;
 - `CODEXCTL_REGISTRY_HOST` — image registry host (optional, defaults to `registry.<namespace>.svc.cluster.local:5000`);
 - `CODEXCTL_WORKSPACE_MOUNT` — mount point of the workspace PVC (usually `/workspace`);
 - `CODEXCTL_CODE_ROOT_BASE` — base path inside the workspace PVC, used to compute:
@@ -815,7 +811,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -904,7 +899,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1059,7 +1053,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1176,7 +1169,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1395,7 +1387,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1466,8 +1457,9 @@ jobs:
 Full example: `project-example` repo, `.github/workflows/ai_pr_review.yml`.
 ### 🧯 7.6. AI Staging Repair by Issue (label `[ai-repair]`)
 
-This mode brings up `ai-repair` in the ai-staging namespace (Codex Pod + RBAC only for required resources), syncs ai-staging sources, runs the
-`ai-repair_issue` agent, and if needed pushes changes to the `codex/ai-repair-<N>` branch.
+This mode brings up `ai-repair` in the ai-staging namespace (Codex Pod + full RBAC within the namespace), syncs ai-staging sources, runs the
+`ai-repair_issue` agent, and if needed pushes changes to the `codex/ai-repair-<N>` branch. Cleanup removes only `ai-repair` resources and
+does not delete the namespace.
 
 ```yaml
 name: "AI Staging Repair 🧯"
@@ -1490,7 +1482,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1711,7 +1702,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1829,7 +1819,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1947,7 +1936,6 @@ Recommended set of secrets/vars in your project repository (e.g. `codex-project`
 
 - `CODEXCTL_GH_PAT` — PAT for a GitHub bot user;
 - `CODEXCTL_GH_USERNAME` — bot username. Do not use a developer’s personal account; create a dedicated technical account.
-- `CODEXCTL_KUBECONFIG` — path to kubeconfig inside the runner pod (if not using `~/.kube/config`);
 - secrets for DB/Redis/cache/queue (username/password, DSN, etc.);
 - `CODEXCTL_REGISTRY_HOST` and (optionally) registry credentials.
 - `OPENAI_API_KEY` — OpenAI API key.

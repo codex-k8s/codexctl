@@ -8,27 +8,17 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
 )
 
-// Client wraps kubectl execution with optional kubeconfig and context selection.
+// Client wraps kubectl execution for in-cluster workloads.
 type Client struct {
-	// Kubeconfig is the path to the kubeconfig file to use.
-	Kubeconfig string
-	// Context selects the kubeconfig context name.
-	Context string
 	// StdoutToStderr redirects kubectl stdout to stderr (useful for machine-readable outputs).
 	StdoutToStderr bool
 }
 
 // NewClient constructs a new Kubernetes client wrapper.
-func NewClient(kubeconfig, context string) *Client {
-	kubeconfig = expandKubeconfigPath(kubeconfig)
-	return &Client{
-		Kubeconfig: kubeconfig,
-		Context:    context,
-	}
+func NewClient() *Client {
+	return &Client{}
 }
 
 // Apply applies the given multi-document YAML to the cluster using kubectl apply -f -.
@@ -81,23 +71,11 @@ func (c *Client) RunRaw(ctx context.Context, stdin []byte, args ...string) error
 
 // RunAndCapture executes kubectl and returns stdout bytes (stderr streamed).
 func (c *Client) RunAndCapture(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
-	cmdArgs := make([]string, 0, len(args)+4)
-	if c.Context != "" {
-		cmdArgs = append(cmdArgs, "--context", c.Context)
-	}
-	cmdArgs = append(cmdArgs, args...)
-
-	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	cmd.Stderr = os.Stderr
 
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
-	}
-
-	if c.Kubeconfig != "" {
-		env := os.Environ()
-		env = append(env, "KUBECONFIG="+c.Kubeconfig)
-		cmd.Env = env
 	}
 
 	out, err := cmd.Output()
@@ -107,15 +85,9 @@ func (c *Client) RunAndCapture(ctx context.Context, stdin []byte, args ...string
 	return out, nil
 }
 
-// runKubectl executes kubectl with configured context/kubeconfig and streams output.
+// runKubectl executes kubectl and streams output.
 func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) error {
-	cmdArgs := make([]string, 0, len(args)+4)
-	if c.Context != "" {
-		cmdArgs = append(cmdArgs, "--context", c.Context)
-	}
-	cmdArgs = append(cmdArgs, args...)
-
-	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	if c.StdoutToStderr {
 		cmd.Stdout = os.Stderr
 	} else {
@@ -128,11 +100,6 @@ func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) e
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
 
-	if c.Kubeconfig != "" {
-		env := os.Environ()
-		env = append(env, "KUBECONFIG="+c.Kubeconfig)
-		cmd.Env = env
-	}
 	if err := cmd.Run(); err != nil {
 		if stderr.Len() > 0 {
 			return fmt.Errorf("kubectl %v failed: %w; stderr: %s", args, err, stderr.String())
@@ -140,17 +107,4 @@ func (c *Client) runKubectl(ctx context.Context, stdin []byte, args ...string) e
 		return fmt.Errorf("kubectl %v failed: %w", args, err)
 	}
 	return nil
-}
-
-// expandKubeconfigPath expands leading ~ to the user home directory.
-func expandKubeconfigPath(path string) string {
-	if path == "" {
-		return ""
-	}
-	if strings.HasPrefix(path, "~") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, strings.TrimPrefix(path, "~"))
-		}
-	}
-	return path
 }

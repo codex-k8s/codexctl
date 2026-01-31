@@ -132,7 +132,7 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 - `ai-staging` — стейджинг‑кластер (CI/CD, приближённый к продакшену);
 - `ai` — AI-dev слоты: изолированные namespace’ы вида `<project>-dev-<slot>` (например, `codex-project-dev-<slot>`),
   с доменами `dev-<slot>.ai-staging.<domain>`, в которых работают Codex‑агенты над задачами/PR.
-- `ai-repair` — Pod Codex в namespace ai-staging с RBAC только для нужных ресурсов (восстановление).
+- `ai-repair` — Pod Codex в namespace ai-staging с полным RBAC в рамках namespace (восстановление).
 
 Слоты (`slot`) — это числовые идентификаторы AI-dev окружений, которыми управляет `codexctl ci ensure-slot/ensure-ready`. Для каждого
 слота создаётся и поддерживается:
@@ -200,7 +200,7 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 ### ✅ 2.1. Требования
 
 - Kubernetes‑кластер (отдельный от продакшена).
-- Доступный `kubectl` и kubeconfig для выбранного окружения.
+- Доступный `kubectl` для выбранного окружения (in‑cluster service account).
 - Kaniko executor (по умолчанию `/kaniko/executor`) и кластерный registry (по умолчанию `registry.<namespace>.svc.cluster.local:5000`,
   при необходимости переопределяется через `CODEXCTL_REGISTRY_HOST`).
 - Собранный бинарь `codexctl` в `PATH`.
@@ -272,10 +272,8 @@ state:
 
 environments:
   dev:
-    kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
   ai-staging:
-    kubeconfig: '{{ envOr "CODEXCTL_KUBECONFIG" "" }}'
     imagePullPolicy: Always
   ai:
     from: "ai-staging"
@@ -401,10 +399,8 @@ namespace:
 ```yaml
 environments:
   dev:
-    kubeconfig: "/home/user/.kube/project-example-dev"
     imagePullPolicy: IfNotPresent
   ai-staging:
-    kubeconfig: '{{ envOr "CODEXCTL_KUBECONFIG" "" }}'
     imagePullPolicy: Always
   ai:
     from: "ai-staging"
@@ -416,6 +412,7 @@ environments:
 
 - `from` позволяет наследовать настройки (например, `ai` от `ai-staging`).
 - реестр образов задаётся через корневое поле `registry`; при необходимости можно переопределить через `CODEXCTL_REGISTRY_HOST`.
+- `slotBootstrapInfra` — список infra‑групп, которые `ci ensure-slot` применяет сразу после создания слота (например, RBAC).
 
 ### 🖼️ 3.5. `images`
 
@@ -753,7 +750,6 @@ registry: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.lo
 
 Часто используемые переменные:
 
-- `CODEXCTL_KUBECONFIG` — путь до kubeconfig, если не задан в `environments.*.kubeconfig`;
 - `CODEXCTL_REGISTRY_HOST` — адрес реестра образов (опционально, по умолчанию `registry.<namespace>.svc.cluster.local:5000`);
 - `CODEXCTL_WORKSPACE_MOUNT` — точка монтирования PVC с исходниками (обычно `/workspace`);
 - `CODEXCTL_CODE_ROOT_BASE` — базовый путь внутри workspace PVC, используется для вычисления путей:
@@ -808,7 +804,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -898,7 +893,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1053,7 +1047,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1171,7 +1164,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1390,7 +1382,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1462,8 +1453,9 @@ jobs:
 
 ### 🧯 7.6. AI Staging Repair по Issue (лейбл `[ai-repair]`)
 
-Этот режим поднимает `ai-repair` в namespace `ai-staging` (Pod Codex + RBAC только для нужных ресурсов), синхронизирует исходники ai-staging,
-запускает агента `ai-repair_issue`, и при необходимости пушит изменения в ветку `codex/ai-repair-<N>`.
+Этот режим поднимает `ai-repair` в namespace `ai-staging` (Pod Codex + полный RBAC в namespace), синхронизирует исходники ai-staging,
+запускает агента `ai-repair_issue`, и при необходимости пушит изменения в ветку `codex/ai-repair-<N>`. Очистка удаляет только ресурсы
+`ai-repair` в namespace и не трогает сам namespace.
 
 ```yaml
 name: "AI Staging Repair 🧯"
@@ -1486,7 +1478,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1706,7 +1697,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1823,7 +1813,6 @@ env:
   CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
   CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
   CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
-  CODEXCTL_KUBECONFIG:    ${{ vars.CODEXCTL_KUBECONFIG }}
   CODEXCTL_WORKSPACE_MOUNT: /workspace
   CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
   CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
@@ -1942,7 +1931,6 @@ jobs:
 - `CODEXCTL_GH_PAT` — PAT пользователя‑бота GitHub;
 - `CODEXCTL_GH_USERNAME` — имя пользователя‑бота; Не используйте личный аккаунт разработчика, создайте отдельный технический аккаунт.
 - `CODEXCTL_GH_EMAIL` — email пользователя‑бота для git‑коммитов (например, `codex-bot@example.com`).
-- `CODEXCTL_KUBECONFIG` — путь к kubeconfig внутри runner‑пода (если не используется `~/.kube/config`);
 - секреты БД/Redis/кеша/очереди (username/password, DSN и т.п.);
 - `CODEXCTL_REGISTRY_HOST` и (опционально) реквизиты доступа к реестру.
 - `OPENAI_API_KEY` — API‑ключ OpenAI.

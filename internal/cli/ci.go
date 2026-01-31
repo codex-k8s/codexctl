@@ -81,11 +81,9 @@ func newCISyncSourcesCommand(opts *Options) *cobra.Command {
 				return fmt.Errorf("sync-sources requires a resolved namespace")
 			}
 
-			envCfgResolved, err := config.ResolveEnvironment(stackCfg, envName)
-			if err != nil {
+			if _, err := config.ResolveEnvironment(stackCfg, envName); err != nil {
 				return err
 			}
-			applyKubeconfigOverride(&envCfgResolved)
 
 			workspaceMount := strings.TrimSpace(envCfg.WorkspaceMount)
 			if workspaceMount == "" {
@@ -102,7 +100,7 @@ func newCISyncSourcesCommand(opts *Options) *cobra.Command {
 			}
 			targetPath := filepath.Join(workspaceMount, targetRel)
 
-			kubeClient := kube.NewClient(envCfgResolved.Kubeconfig, envCfgResolved.Context)
+			kubeClient := kube.NewClient()
 			if err := syncSources(cmd.Context(), logger, source, syncTarget{
 				Namespace:  ctxData.Namespace,
 				PVCName:    workspacePVC,
@@ -315,8 +313,7 @@ func newCIApplyCommand(opts *Options) *cobra.Command {
 				waitDelay = 5 * time.Second
 			}
 
-			applyKubeconfigOverride(&envCfg)
-			client := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+			client := kube.NewClient()
 			waitTimeoutResolved := resolveDeployWaitTimeout(stackCfg, waitTimeout, cmd.Flags().Changed("wait-timeout") || envPresent("CODEXCTL_WAIT_TIMEOUT"))
 			for attempt := 1; attempt <= waitAttempts; attempt++ {
 				if err := waitForDeployments(cmd.Context(), client, ctxData.Namespace, requestTimeout, waitTimeoutResolved); err != nil {

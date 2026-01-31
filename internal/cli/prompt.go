@@ -119,12 +119,11 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 				ctxData.EnvMap["CODEXCTL_LANG"] = lang
 			}
 
-			envConfig, err := config.ResolveEnvironment(stackCfg, envName)
-			if err != nil {
+			if _, err := config.ResolveEnvironment(stackCfg, envName); err != nil {
 				return err
 			}
 
-			kubeClient := kube.NewClient(envConfig.Kubeconfig, envConfig.Context)
+			kubeClient := kube.NewClient()
 
 			if raw := strings.TrimSpace(ctxData.EnvMap["CODEXCTL_MODEL"]); raw != "" {
 				model, err := normalizeModel(raw)

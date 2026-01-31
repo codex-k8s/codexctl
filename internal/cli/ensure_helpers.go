@@ -160,6 +160,9 @@ func ensureSlot(ctx context.Context, logger *slog.Logger, opts *Options, req ens
 	res.record = rec
 	res.created = true
 	res.store = envStore
+	if err := applySlotBootstrapInfra(ctx, logger, opts, envStore, rec, req); err != nil {
+		return res, err
+	}
 	return res, nil
 }
 
@@ -327,6 +330,68 @@ func ensureReady(ctx context.Context, logger *slog.Logger, opts *Options, req en
 	res.created = created
 	res.recreated = recreated
 	return res, nil
+}
+
+func applySlotBootstrapInfra(
+	ctx context.Context,
+	logger *slog.Logger,
+	opts *Options,
+	envStore *envSlotStore,
+	rec state.EnvRecord,
+	req ensureSlotRequest,
+) error {
+	if envStore == nil {
+		return nil
+	}
+	infraNames := envStore.envCfg.SlotBootstrapInfra
+	if len(infraNames) == 0 {
+		return nil
+	}
+
+	envName := req.envName
+	if envName == "" {
+		envName = "ai"
+	}
+
+	loadOpts := config.LoadOptions{
+		Env:       envName,
+		Namespace: rec.Namespace,
+		Slot:      rec.Slot,
+		UserVars:  req.inlineVars,
+		VarFiles:  req.varFiles,
+	}
+	stackCfg, ctxData, err := config.LoadStackConfig(opts.ConfigPath, loadOpts)
+	if err != nil {
+		return err
+	}
+
+	applyCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	logger.Info("applying slot bootstrap infra", "env", envName, "namespace", rec.Namespace, "infra", infraNames)
+	onlyInfra := nameSetFromSlice(infraNames)
+	if len(onlyInfra) == 0 {
+		return nil
+	}
+	renderOpts := engine.RenderOptions{
+		OnlyInfra: onlyInfra,
+	}
+	return applyStack(applyCtx, logger, stackCfg, ctxData, envName, envStore.envCfg, false, false, req.machineOutput, renderOpts)
+}
+
+func nameSetFromSlice(values []string) map[string]struct{} {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		set[trimmed] = struct{}{}
+	}
+	return set
 }
 
 func checkEnvReady(ctx context.Context, client *kube.Client, namespace, deployment string) (bool, error) {

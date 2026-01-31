@@ -559,20 +559,9 @@ func kubectlCopyToPod(ctx context.Context, client *kube.Client, namespace, pod, 
 	src = filepath.Join(src, ".")
 	dst := fmt.Sprintf("%s/%s:%s", namespace, pod, dest)
 
-	args := make([]string, 0, 4)
-	if client.Context != "" {
-		args = append(args, "--context", client.Context)
-	}
-	args = append(args, "cp", src, dst)
-
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	cmd := exec.CommandContext(ctx, "kubectl", "cp", src, dst)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if client.Kubeconfig != "" {
-		env := os.Environ()
-		env = append(env, "KUBECONFIG="+client.Kubeconfig)
-		cmd.Env = env
-	}
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("kubectl cp failed: %w", err)
 	}
@@ -960,8 +949,7 @@ func loadEnvSlotStore(
 		return nil, err
 	}
 
-	applyKubeconfigOverride(&envCfg)
-	kubeClient := kube.NewClient(envCfg.Kubeconfig, envCfg.Context)
+	kubeClient := kube.NewClient()
 	store, err := state.NewStore(stackCfg, kubeClient, logger)
 	if err != nil {
 		return nil, err
