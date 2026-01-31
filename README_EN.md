@@ -140,7 +140,7 @@ The same context is also used by:
 - `ai-staging` — a ai-staging cluster (CI/CD, close to production);
 - `ai` — AI-dev slots: isolated namespaces like `<project>-dev-<slot>` (for example, `codex-project-dev-<slot>`),
   with domains `dev-<slot>.ai-staging.<domain>`, where Codex agents work on tasks/PRs.
-- `ai-repair` — a separate namespace with a Codex Pod and RBAC access to the ai-staging namespace (for recovery/repair).
+- `ai-repair` — a Codex Pod in the ai-staging namespace with RBAC only for the required resources (recovery/repair).
 
 Slots (`slot`) are numeric identifiers for AI-dev environments managed by `codexctl ci ensure-slot/ensure-ready`. For each
 slot, the following is created and maintained:
@@ -258,7 +258,7 @@ namespace:
     dev: "{{ .Project }}-dev"
     ai-staging: "{{ .Project }}-ai-staging"
     ai: "{{ .Project }}-dev-{{ .Slot }}"
-    ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
+    ai-repair: "{{ .Project }}-ai-staging"
 
 registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
 
@@ -295,7 +295,7 @@ images:
 
 infrastructure:
   - name: namespace-and-config
-    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
+    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") }}'
     manifests:
       - path: deploy/namespace.yaml
       - path: deploy/configmap.yaml
@@ -389,7 +389,7 @@ namespace:
     dev: "{{ .Project }}-dev"
     ai-staging: "{{ .Project }}-ai-staging"
     ai: "{{ .Project }}-dev-{{ .Slot }}"
-    ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
+    ai-repair: "{{ .Project }}-ai-staging"
 ```
 
 - `baseDomain` — domains for ingresses by environment.
@@ -457,7 +457,7 @@ A list of infrastructure services:
 ```yaml
 infrastructure:
   - name: namespace-and-config
-    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
+    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") }}'
     manifests:
       - path: deploy/namespace.yaml
       - path: deploy/configmap.yaml
@@ -1432,7 +1432,7 @@ jobs:
 Full example: `project-example` repo, `.github/workflows/ai_pr_review.yml`.
 ### 🧯 7.6. AI Staging Repair by Issue (label `[ai-repair]`)
 
-This mode brings up an `ai-repair` environment (Codex pod + RBAC to the ai-staging namespace), syncs ai-staging sources, runs the
+This mode brings up `ai-repair` in the ai-staging namespace (Codex Pod + RBAC only for required resources), syncs ai-staging sources, runs the
 `ai-repair_issue` agent, and if needed pushes changes to the `codex/ai-repair-<N>` branch.
 
 ```yaml
@@ -1511,7 +1511,7 @@ jobs:
           CODEXCTL_SLOT:           ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_PREFLIGHT:      true
           CODEXCTL_WAIT:           true
-          CODEXCTL_ONLY_INFRA:     namespace-and-config,codex-ai-repair-rbac
+          CODEXCTL_ONLY_INFRA:     codex-ai-repair-rbac
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
@@ -1714,7 +1714,7 @@ jobs:
           CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
           CODEXCTL_PREFLIGHT:      true
           CODEXCTL_WAIT:           true
-          CODEXCTL_ONLY_INFRA:     namespace-and-config,codex-ai-repair-rbac
+          CODEXCTL_ONLY_INFRA:     codex-ai-repair-rbac
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}

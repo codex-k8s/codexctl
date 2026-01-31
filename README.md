@@ -136,7 +136,7 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 - `ai-staging` — стейджинг‑кластер (CI/CD, приближённый к продакшену);
 - `ai` — AI-dev слоты: изолированные namespace’ы вида `<project>-dev-<slot>` (например, `codex-project-dev-<slot>`),
   с доменами `dev-<slot>.ai-staging.<domain>`, в которых работают Codex‑агенты над задачами/PR.
-- `ai-repair` — отдельный namespace с Pod’ом Codex и RBAC‑доступом к namespace ai-staging (для восстановления).
+- `ai-repair` — Pod Codex в namespace ai-staging с RBAC только для нужных ресурсов (восстановление).
 
 Слоты (`slot`) — это числовые идентификаторы AI-dev окружений, которыми управляет `codexctl ci ensure-slot/ensure-ready`. Для каждого
 слота создаётся и поддерживается:
@@ -250,7 +250,7 @@ namespace:
     dev: "{{ .Project }}-dev"
     ai-staging: "{{ .Project }}-ai-staging"
     ai: "{{ .Project }}-dev-{{ .Slot }}"
-    ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
+    ai-repair: "{{ .Project }}-ai-staging"
 
 registry: '{{ envOr "REGISTRY_HOST" "localhost:5000" }}'
 
@@ -287,7 +287,7 @@ images:
 
 infrastructure:
   - name: namespace-and-config
-    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
+    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") }}'
     manifests:
       - path: deploy/namespace.yaml
       - path: deploy/configmap.yaml
@@ -380,7 +380,7 @@ namespace:
     dev: "{{ .Project }}-dev"
     ai-staging: "{{ .Project }}-ai-staging"
     ai: "{{ .Project }}-dev-{{ .Slot }}"
-    ai-repair: "{{ .Project }}-ai-repair-{{ .Slot }}"
+    ai-repair: "{{ .Project }}-ai-staging"
 ```
 
 - `baseDomain` — домены для ingress’ов по окружениям.
@@ -449,7 +449,7 @@ images:
 ```yaml
 infrastructure:
   - name: namespace-and-config
-    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") (eq .Env "ai-repair") }}'
+    when: '{{ or (eq .Env "dev") (eq .Env "ai-staging") (eq .Env "ai") }}'
     manifests:
       - path: deploy/namespace.yaml
       - path: deploy/configmap.yaml
@@ -1427,7 +1427,7 @@ jobs:
 
 ### 🧯 7.6. AI Staging Repair по Issue (лейбл `[ai-repair]`)
 
-Этот режим поднимает окружение `ai-repair` (pod Codex + RBAC к namespace ai-staging), синхронизирует исходники ai-staging,
+Этот режим поднимает `ai-repair` в namespace `ai-staging` (Pod Codex + RBAC только для нужных ресурсов), синхронизирует исходники ai-staging,
 запускает агента `ai-repair_issue`, и при необходимости пушит изменения в ветку `codex/ai-repair-<N>`.
 
 ```yaml
@@ -1506,7 +1506,7 @@ jobs:
           CODEXCTL_SLOT:           ${{ needs.create-ai-repair.outputs.slot }}
           CODEXCTL_PREFLIGHT:      true
           CODEXCTL_WAIT:           true
-          CODEXCTL_ONLY_INFRA:     namespace-and-config,codex-ai-repair-rbac
+          CODEXCTL_ONLY_INFRA:     codex-ai-repair-rbac
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
@@ -1708,7 +1708,7 @@ jobs:
           CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
           CODEXCTL_PREFLIGHT:      true
           CODEXCTL_WAIT:           true
-          CODEXCTL_ONLY_INFRA:     namespace-and-config,codex-ai-repair-rbac
+          CODEXCTL_ONLY_INFRA:     codex-ai-repair-rbac
           CODEXCTL_ONLY_SERVICES:  codex
           OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
           CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
