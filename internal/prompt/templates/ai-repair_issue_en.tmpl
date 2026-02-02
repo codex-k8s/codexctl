@@ -74,7 +74,7 @@ Current task:
    - Test key endpoints via curl/httpie or a health check (if available).
 4) Deliver the result via GitHub:
    - Work in branch `codex/ai-repair-{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
-   - Commit in English, concise and meaningful.
+   - Commit in English, concise and meaningful, and include the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`).
    - Push and open a PR into main with an English title and description.
    - For `gh issue comment` / `gh pr create/edit/comment` use `--body-file` (or heredoc) to preserve newlines; do not pass `\n` via `--body`.
    - Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (e.g., `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) or `<redacted>`.
@@ -86,5 +86,6 @@ PR description or Issue comment format:
 - What you checked in Context7 (if you used it).
 - Commands/checks (kubectl/curl/psql/redis-cli) with actual results.
 - Links to environment endpoints for manual verification.
+- Final line (PR only): `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
 
 Start now. Restore ai-staging first, then drive the task to a PR (if repository changes were needed) or a comment on the Issue (if no repository changes were needed).

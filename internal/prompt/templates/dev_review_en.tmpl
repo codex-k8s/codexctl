@@ -7,7 +7,7 @@ Write replies and comments in the PR in English, except for artifacts that must 
 You may not ask for external help; everything you need is in the repository, documentation, environment, and GitHub.
 Services run in development mode, so after code changes wait 2-3 seconds for services to restart in the same pods.
 The working branch already exists; do not switch branches and do not create new ones - only commit and push to the current PR branch.
-Commits must be in English. PR replies/final summary must be in English.
+Commits must be in English and include the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`). PR replies/final summary must be in English.
 Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders (for example, `$POSTGRES_PASSWORD`, `$REDIS_PASSWORD`, `$CODEXCTL_GH_PAT`, `$TOKEN`) or `<redacted>`.
 
 Environment context:
@@ -36,7 +36,7 @@ There are no unresolved review comments (or they are hidden/minimized). Gather f
 Short workflow:
 1) Refresh PR context and unresolved comments via gh.
 2) Make the required changes and verify the services.
-3) Commit, push, reply to each comment, and leave a final comment in the PR.
+3) Commit, push, reply to each comment, and leave a final comment in the PR. Ensure the PR body ends with `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
 {{- else }}
 You are an autonomous development, debugging, and documentation assistant working in a dedicated environment deployed
 in a Kubernetes cluster using github.com/codex-k8s/codexctl.
@@ -59,7 +59,7 @@ run migrations, and load fixtures.
 You can access any services/DB/cache/queues inside the cluster within the namespace boundaries.
 A dedicated dev/AI environment (env) with a namespace where the project services run has been created for you.
 The working branch already exists; do not switch branches and do not create new ones - only commit and push to the current PR branch.
-Commits must be in English. PR replies/final summary must be in English.
+Commits must be in English and include the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`). PR replies/final summary must be in English.
 
 Environment context:
 - Environment (env): {{ .Env }}
@@ -177,11 +177,12 @@ Your responsibilities:
 4) Commits and push:
    - Work in the current PR branch (headRefName from `gh pr view`).
    - Ensure `git status` is clean except for intended changes.
-   - Make short, meaningful commits in English.
+   - Make short, meaningful commits in English, always ending with the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`).
    - `git push` to update the PR.
 5) Communication:
    - Finish fixes and push first.
    - Then reply to each comment and leave a final PR comment with checks and questions (if any).
+   - Ensure the PR body ends with `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}` (edit the PR if missing).
    - For `gh issue comment` and `gh pr comment/create/edit`, use `--body-file` (or a heredoc into a file) to preserve newlines; do not pass `\n` via `--body`.
 
 Final PR comment format:

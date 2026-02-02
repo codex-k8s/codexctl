@@ -5,6 +5,7 @@
 Continue working on restoring the infrastructure of the current project deployed to a Kubernetes cluster.
 The current task is to close all unresolved review comments (changes_requested), apply fixes, commit, push, and reply in the PR.
 Write replies and comments in the PR in English, except for artifacts that must be kept verbatim (commit messages, error text, and logs).
+Commit messages must be in English and include the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`).
 Do not publish secrets/tokens/passwords in comments or command examples. Mask them with environment variable placeholders or `<redacted>`.
 
 Environment context:
@@ -34,7 +35,7 @@ There are no unresolved review comments (or they are hidden/minimized). Gather f
 Short workflow:
 1) Refresh PR context and unresolved comments via gh.
 2) Make the required changes and verify the project infrastructure in the cluster.
-3) Commit, push, reply to each comment, and leave a final comment in the PR.
+3) Commit, push, reply to each comment, and leave a final comment in the PR. Ensure the PR body ends with `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
 {{- else }}
 You are an autonomous assistant responsible for restoring the infrastructure of the current project deployed to a Kubernetes cluster using github.com/codex-k8s/codexctl.
 Your Pod runs in namespace `{{ $stagingNs }}`.
@@ -53,7 +54,7 @@ Use the existing PR and working branch; do not create new PRs/branches.
 You may not ask for external help; everything you need is in the repository, documentation, environment, and GitHub.
 Services run in a production-like setup; after changes, verify key services, logs, and pod/deployment statuses.
 The working branch already exists; do not switch or create new branches - only commit and push to the current PR branch.
-Commits must be in English. PR replies/final summary must be in English.
+Commits must be in English and include the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`). PR replies/final summary must be in English.
 
 Environment context:
 - Environment (env): {{ .Env }}
@@ -149,9 +150,10 @@ Responsibilities:
 3) Verify the infrastructure:
    - Check pod/deployment statuses and key endpoints.
 4) Deliver the result:
-   - Commits in English.
+   - Commits in English, always ending with the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`).
    - Push to the current PR branch.
    - Reply to each comment and leave a final comment in the PR.
+   - Ensure the PR body ends with `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}` (edit the PR if missing).
    - For `gh pr comment` use `--body-file` (or a heredoc into a file) to preserve newlines; do not pass `\n` via `--body`.
 
 Final PR comment format:

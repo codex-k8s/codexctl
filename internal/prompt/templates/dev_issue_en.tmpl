@@ -12,7 +12,7 @@ You can access any services/DB/cache/queues inside the cluster within the namesp
 A dedicated dev/AI environment (env) with a namespace where the project services run has been created for you.
 A dedicated branch has been created for you; do not switch branches and do not create new ones - only commit into it.
 When finished, push the branch and open a PR into `main` (PR title and body in English) via `gh`, using the PR description format below.
-Commit messages must be in English, short, and meaningful.
+Commit messages must be in English, short, and meaningful, and include the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`).
 
 Environment context:
 - Environment (env): {{ .Env }}
@@ -121,9 +121,9 @@ Your responsibilities:
    - Check data changes (DB/caches/queues) if needed.
 4) Deliver the result via GitHub:
    - Work in the dedicated branch (for example, `codex/issue-$CODEXCTL_ISSUE_NUMBER`).
-   - Make commits with short, meaningful messages in English.
+   - Make commits with short, meaningful messages in English, always ending with the Issue reference in parentheses (for example, `Fix validation for signup form (#{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }})`).
    - Push the branch and open a Pull Request into the main branch.
-   - Write the PR in English, briefly and to the point: what changed and how to verify it.
+   - Write the PR in English, briefly and to the point: what changed and how to verify it, and end the body with `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
 5) Communication:
    - Finish the implementation and PR first.
    - Then post a summary comment in the Issue with: done work, verification, and any questions or suggestions.
@@ -136,6 +136,7 @@ PR description format:
 - What you checked in Context7 (if used).
 - Commands/requests used for verification (curl/kubectl/psql/redis-cli), with actual results.
 - Links to environment endpoints for manual verification.
+- Final line: `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
 
 Start working. If you need additional context, obtain it autonomously (via `gh`, code, logs) and keep going until you get a working result.
 Do not stop until the entire task is implemented and the system is healthy. Remember: you may not ask for external help;
