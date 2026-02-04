@@ -398,9 +398,9 @@ Example (includes `yaml-mcp-server`): https://github.com/codex-k8s/yaml-mcp-serv
 codex:
   mcp:
     servers:
-      - name: yaml-mcp-server
+      - name: yaml_mcp
         type: cluster
-        description: "Approval gateway (yaml-mcp-server)"
+        description: "Approval gateway (yaml-mcp-server)."
         tool_timeout_sec: 3600
         service:
           name: yaml-mcp-server
@@ -408,10 +408,10 @@ codex:
           port: 8080
           path: /mcp
         tools:
-          - name: GitHubSecretCreatorInK8s
-            description: "Create GitHub Secret + write K8s Secret."
-          - name: PsqlDbCreatorInK8s
-            description: "Create a Postgres DB using K8s secrets."
+          - name: yaml_mcp_create_github_secret_k8s
+            description: "Safe creation of a GitHub Secret and writing it to a K8s Secret."
+          - name: yaml_mcp_create_psql_db_k8s
+            description: "Create a Postgres DB using K8s secret names within the specified namespace."
       - name: context7
         type: stdio
         command: npx
@@ -440,7 +440,7 @@ Generated `~/.codex/config.toml` fragment:
 
 ```toml
 # MCP servers (from services.yaml)
-[mcp_servers.yaml-mcp-server]
+[mcp_servers.yaml_mcp]
 url = "http://yaml-mcp-server.codex-system.svc.cluster.local:8080/mcp"
 tool_timeout_sec = 3600
 

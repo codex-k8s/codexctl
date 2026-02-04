@@ -390,9 +390,9 @@ MCP‑серверы можно описывать прямо в `services.yaml`
 codex:
   mcp:
     servers:
-      - name: yaml-mcp-server
+      - name: yaml_mcp
         type: cluster
-        description: "Approval gateway (yaml-mcp-server)"
+        description: "Approval gateway (yaml-mcp-server)."
         tool_timeout_sec: 3600
         service:
           name: yaml-mcp-server
@@ -400,10 +400,10 @@ codex:
           port: 8080
           path: /mcp
         tools:
-          - name: GitHubSecretCreatorInK8s
-            description: "Создание GitHub Secret + запись в K8s Secret."
-          - name: PsqlDbCreatorInK8s
-            description: "Создание БД в Postgres по секретам в K8s."
+          - name: yaml_mcp_create_github_secret_k8s
+            description: "Безопасное создание GitHub Secret и запись его в K8s Secret."
+          - name: yaml_mcp_create_psql_db_k8s
+            description: "Создание БД в Postgres по именам секретов в K8s в указанном namespace."
       - name: context7
         type: stdio
         command: npx
@@ -432,7 +432,7 @@ headers:
 
 ```toml
 # MCP servers (from services.yaml)
-[mcp_servers.yaml-mcp-server]
+[mcp_servers.yaml_mcp]
 url = "http://yaml-mcp-server.codex-system.svc.cluster.local:8080/mcp"
 tool_timeout_sec = 3600
 
