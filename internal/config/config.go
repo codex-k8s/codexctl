@@ -83,6 +83,11 @@ type CodexConfig struct {
 	// Timeouts configures operation timeouts related to Codex flows, such as
 	// prompt execution and rollout waits.
 	Timeouts CodexTimeouts `yaml:"timeouts,omitempty"`
+	// ConfigBlocks are additional TOML fragments appended to the generated Codex config.
+	// Each block is rendered as a template with the stack context.
+	ConfigBlocks []CodexConfigBlock `yaml:"configBlocks,omitempty"`
+	// MCP defines Model Context Protocol server configuration.
+	MCP CodexMCPConfig `yaml:"mcp,omitempty"`
 }
 
 // CodexTimeouts holds string-form durations for Codex-related operations.
@@ -332,6 +337,8 @@ type TemplateContext struct {
 	Now time.Time
 	// UserVars contains inline user variables.
 	UserVars env.Vars
+	// Vars contains variables loaded from var files and inline vars.
+	Vars env.Vars
 	// EnvMap merges OS env, envFiles, and user variables.
 	EnvMap env.Vars
 	// Versions contains version strings from services.yaml.
@@ -403,6 +410,7 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 		varFileVars = env.Merge(varFileVars, vp)
 	}
 
+	varsMap := env.Merge(varFileVars, opts.UserVars)
 	envMap := env.Merge(osVars, envFileVars, varFileVars, opts.UserVars)
 
 	ctx := TemplateContext{
@@ -413,6 +421,7 @@ func LoadAndRender(path string, opts LoadOptions) ([]byte, TemplateContext, erro
 		Slot:        opts.Slot,
 		Now:         time.Now().UTC(),
 		UserVars:    opts.UserVars,
+		Vars:        varsMap,
 		EnvMap:      envMap,
 		Versions:    header.Versions,
 		BaseDomain:  header.BaseDomain,
@@ -521,6 +530,7 @@ func buildFuncMap(ctx TemplateContext) template.FuncMap {
 		"ternary":    funcTernary,
 		"now":        func() time.Time { return ctx.Now },
 		"join":       funcJoin,
+		"indent":     funcIndent,
 		"trimPrefix": funcTrimPrefix,
 	}
 }
@@ -571,6 +581,20 @@ func funcTernary(cond bool, a, b any) any {
 // funcJoin joins a slice of strings with the given separator.
 func funcJoin(values []string, sep string) string {
 	return strings.Join(values, sep)
+}
+
+// funcIndent indents each line of value with the given number of spaces.
+func funcIndent(spaces int, value string) string {
+	if value == "" {
+		return ""
+	}
+	prefix := strings.Repeat(" ", spaces)
+	trimmed := strings.TrimRight(value, "\n")
+	lines := strings.Split(trimmed, "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	return strings.Join(lines, "\n")
 }
 
 // funcTrimPrefix removes the prefix from value when present.

@@ -139,12 +139,22 @@ Tools:
 - Additional project-specific tools: {{ join .Codex.ExtraTools ", " }}
 {{- end }}
 
-{{- if ne (envOr "CONTEXT7_API_KEY" "" ) "" }}
+{{- if .Codex.MCP.Servers }}
 
-Additional source of up-to-date information:
-- Context7 MCP server is available.
-- If review fixes require uncommon APIs/tools or the repository lacks documentation, verify the current details via Context7 first.
-- In Context7, also check the docs for `github.com/codex-k8s/codexctl` (CLI, commands, examples).
+Available MCP servers (extra tools):
+{{- range .Codex.MCP.Servers }}
+- {{ .Name }} ({{ .Type }})
+{{- if .Description }}
+  Description:
+{{ indent 4 .Description }}
+{{- end }}
+{{- if .Tools }}
+  Tools:
+  {{- range .Tools }}
+  - {{ .Name }}{{- if .Description }} — {{ .Description }}{{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 Context to restore and review:

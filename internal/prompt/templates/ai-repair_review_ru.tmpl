@@ -120,12 +120,22 @@
 - Дополнительные проектные инструменты: {{ join .Codex.ExtraTools ", " }}
 {{- end }}
 
-{{- if ne (envOr "CONTEXT7_API_KEY" "" ) "" }}
+{{- if .Codex.MCP.Servers }}
 
-Дополнительный источник актуальной информации:
-- У тебя настроен MCP‑сервер Context7.
-- Если для восстановления нужно использовать редкие API/инструменты или документация в репозитории отсутствует, сначала уточни актуальные детали через Context7.
-- В Context7 также надо смотреть справку по `github.com/codex-k8s/codexctl` (CLI, команды, примеры).
+Доступные MCP-сервера (доп. инструменты):
+{{- range .Codex.MCP.Servers }}
+- {{ .Name }} ({{ .Type }})
+{{- if .Description }}
+  Описание:
+{{ indent 4 .Description }}
+{{- end }}
+{{- if .Tools }}
+  Инструменты:
+  {{- range .Tools }}
+  - {{ .Name }}{{- if .Description }} — {{ .Description }}{{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 Контекст для восстановления и review:

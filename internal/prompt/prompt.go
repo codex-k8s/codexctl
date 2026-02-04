@@ -147,35 +147,7 @@ func (r *Renderer) CodexConfigTemplatePath() string {
 // under codex.configTemplate. When no project-specific template is configured,
 // a builtin default template is used.
 func (r *Renderer) RenderCodexConfig() ([]byte, error) {
-	path := r.CodexConfigTemplatePath()
-	if path == "" {
-		raw, err := builtinTemplates.ReadFile(defaultCodexConfigTemplate)
-		if err != nil {
-			return nil, fmt.Errorf("load builtin Codex config template: %w", err)
-		}
-		rendered, err := config.RenderTemplate("codex-config.toml", raw, r.ctx)
-		if err != nil {
-			return nil, fmt.Errorf("render builtin Codex config template: %w", err)
-		}
-		return rendered, nil
-	}
-
-	resolved, err := r.resolveProjectPath(path)
-	if err != nil {
-		return nil, err
-	}
-
-	raw, err := os.ReadFile(resolved)
-	if err != nil {
-		return nil, fmt.Errorf("read Codex config template %q: %w", resolved, err)
-	}
-
-	rendered, err := config.RenderTemplate(filepath.Base(resolved), raw, r.ctx)
-	if err != nil {
-		return nil, fmt.Errorf("render Codex config template %q: %w", resolved, err)
-	}
-
-	return rendered, nil
+	return r.renderCodexConfig()
 }
 
 // resolveProjectPath resolves a path against the project root when it is relative.

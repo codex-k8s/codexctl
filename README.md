@@ -360,6 +360,8 @@ codexctl apply --only-services django-backend,chat-backend,web-frontend --wait
   вставляется в промпты (см. встроенные шаблоны).
 - `codex.servicesOverview` — обзор инфраструктурных/прикладных сервисов и их URL/порты; также попадает в промпты.
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — таймауты для `prompt run` и ожидания rollout’ов.
+- `codex.configBlocks` — TOML‑фрагменты, которые будут добавлены к сгенерённому `~/.codex/config.toml`.
+- `codex.mcp.servers` — декларативное описание MCP‑серверов (stdio/http/cluster) для Codex.
 
 Эти поля используются при рендере встроенных промптов (`dev_issue_*`, `plan_issue_*`, `plan_review_*`,
 `dev_review_*`, `ai-repair_*`) и конфига Codex:
@@ -371,6 +373,95 @@ codexctl apply --only-services django-backend,chat-backend,web-frontend --wait
 
 - конфиг Codex через `codex.configTemplate`;
 - сами промпты — указав свой `--template` для `codexctl prompt ...` или подменив встроенные `.tmpl` в образе.
+
+### 🔌 3.2.1 MCP‑сервера (`codex.mcp.servers`)
+
+MCP‑серверы можно описывать прямо в `services.yaml`. Поддерживаются типы:
+
+- `stdio` — запуск MCP как подпроцесса (`command/args`).
+- `http` / `https` — прямой URL‑эндпоинт.
+- `cluster` — адрес через Kubernetes service DNS + namespace.
+
+**Секреты/токены не кладите в `services.yaml`:** используйте `envRef`/`varRef`.
+
+Пример (включает `yaml-mcp-server`): https://github.com/codex-k8s/yaml-mcp-server
+
+```yaml
+codex:
+  mcp:
+    servers:
+      - name: yaml-mcp-server
+        type: cluster
+        description: "Approval gateway (yaml-mcp-server)"
+        tool_timeout_sec: 3600
+        service:
+          name: yaml-mcp-server
+          namespace: codex-system
+          port: 8080
+          path: /mcp
+        tools:
+          - name: GitHubSecretCreatorInK8s
+            description: "Создание GitHub Secret + запись в K8s Secret."
+          - name: PsqlDbCreatorInK8s
+            description: "Создание БД в Postgres по секретам в K8s."
+      - name: context7
+        type: stdio
+        command: npx
+        args: ["-y", "@upstash/context7-mcp"]
+        env:
+          CONTEXT7_API_KEY:
+            envRef: CONTEXT7_API_KEY
+        tool_timeout_sec: 120
+```
+
+Для HTTP‑серверов можно задать заголовки, например:
+
+```yaml
+headers:
+  Authorization:
+    envRef: MCP_AUTH_HEADER
+```
+
+`headers` с `envRef` превращаются в `env_http_headers`, а `headers` с `value/varRef` — в `http_headers`
+в итоговом `config.toml`. Поле `bearer_token_env_var` также поддерживается.
+
+Если MCP‑сервер выполняет долгие approval‑операции, выставляйте `tool_timeout_sec`
+в `codex.mcp.servers`, чтобы Codex не прерывал ожидание на клиентской стороне.
+
+Фрагмент сгенерённого `~/.codex/config.toml`:
+
+```toml
+# MCP servers (from services.yaml)
+[mcp_servers.yaml-mcp-server]
+url = "http://yaml-mcp-server.codex-system.svc.cluster.local:8080/mcp"
+tool_timeout_sec = 3600
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+tool_timeout_sec = 120
+
+[mcp_servers.context7.env]
+CONTEXT7_API_KEY = "..."
+```
+
+### 🧩 3.2.2 TOML‑фрагменты (`codex.configBlocks`)
+
+Если нужно дописать/расширить `config.toml`, добавьте TOML‑блоки в `services.yaml`:
+
+```yaml
+codex:
+  configBlocks:
+    - name: "custom-tools"
+      toml: |
+        [tools]
+        jq = { enabled = true }
+    - name: "extra-config"
+      file: deploy/codex/extra.toml
+```
+
+Эти блоки будут отрендерены с `TemplateContext` и добавлены в конец `config.toml`
+(валидация TOML выполняется при `codexctl prompt run`).
 
 ### 🌐 3.3. `baseDomain` и `namespace`
 
