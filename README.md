@@ -39,6 +39,11 @@
 
 Рабочий пример (готовые `services.yaml` и GitHub Actions workflow’ы): https://github.com/codex-k8s/project-example
 
+Связанные репозитории:
+- `yaml-mcp-server` — MCP‑gateway для безопасных операций модели: https://github.com/codex-k8s/yaml-mcp-server
+- `telegram-approver` — Telegram‑аппрувер для approval‑флоу: https://github.com/codex-k8s/telegram-approver
+- `project-example` — пример проекта с манифестами и GitHub Actions: https://github.com/codex-k8s/project-example
+
 ---
 
 ## 📦 Установка

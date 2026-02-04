@@ -44,6 +44,11 @@ This provides a practical “like a real developer” experience, but without ha
 
 Working example (ready-made `services.yaml` and GitHub Actions workflows): https://github.com/codex-k8s/project-example
 
+Related repositories:
+- `yaml-mcp-server` — MCP gateway for safe model actions: https://github.com/codex-k8s/yaml-mcp-server
+- `telegram-approver` — Telegram approver for approval flow: https://github.com/codex-k8s/telegram-approver
+- `project-example` — project example with manifests and GitHub Actions: https://github.com/codex-k8s/project-example
+
 ---
 
 ## 📦 Installation
