@@ -1,5 +1,6 @@
 {{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
 {{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
+{{- $reviewMCP := .Codex.ReviewMCPEnabled -}}
 {{- if eq $mode "short" }}
 Продолжайте review результатов планирования в этой Codex‑сессии.
 В одном из Issue появился новый комментарий с тегом `[ai-plan]`.
@@ -41,7 +42,7 @@
 {{- end }}
 
 Короткий сценарий:
-1) Обновить контекст исходного Issue и focus Issue через gh. Также запросите все нескрытые комментарии пользователя под исходным Issue и дочерними Issues.
+1) {{- if $reviewMCP }}Обновить контекст исходного Issue и focus Issue через MCP (github_pr_context, github_review_list_threads, github_pr_list_issue_comments). Также запросите все нескрытые комментарии пользователя под исходным Issue и дочерними Issues.{{- else }}Обновить контекст исходного Issue и focus Issue через gh. Также запросите все нескрытые комментарии пользователя под исходным Issue и дочерними Issues.{{- end }}
 2) Найти существующие результаты планирования (комментарий в исходном Issue и/или дочерние Issues с маркером `AI-PLAN-PARENT`).
 3) Применить уточнение и обновить результаты:
    - если пользователь просит доработать — редактируйте существующий результат (комментарий/Issue body), не создавая новых.
@@ -133,7 +134,12 @@
   - Рендер: `codexctl render --env {{ .Env }} ...` (используй `--only-services/--only-infra` при необходимости).
   - Применение в review‑планировании не выполняй; если требуется сослаться на него — используй фильтры и избегай полного apply и сервиса `codex`.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
+{{- if $reviewMCP }}
+- MCP (github_review_mcp): комментарии/лейблы/тела PR и Issue, поиск, вопросы (github_pr_context, github_review_list_threads, github_pr_list_issue_comments, github_pr_add_comment, github_review_reply_thread, github_pr_update_body, github_issue_update_body, github_pr_set_labels, github_search_issues, github_ask_question).
+- gh: используйте только если MCP не даёт нужных данных.
+{{- else }}
 - gh: чтение/комментирование Issues/PR, создание/редактирование Issues (только если попросили).
+{{- end }}
 - Доступы для gh: токен в CODEXCTL_GH_PAT, логин в CODEXCTL_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: чтение HTTP‑эндпоинтов.
 - rg (ripgrep)

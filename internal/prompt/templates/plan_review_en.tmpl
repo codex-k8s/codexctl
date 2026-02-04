@@ -1,5 +1,6 @@
 {{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
 {{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
+{{- $reviewMCP := .Codex.ReviewMCPEnabled -}}
 {{- if eq $mode "short" }}
 Continue reviewing the planning results in this Codex session.
 A new comment tagged `[ai-plan]` appeared in one of the Issues.
@@ -41,7 +42,7 @@ No current Issue comments (or they are minimized).
 {{- end }}
 
 Short workflow:
-1) Refresh context for the source Issue and the focus Issue via gh. Also fetch all not-minimized user comments under the source Issue and child Issues.
+1) {{- if $reviewMCP }}Refresh context for the source Issue and the focus Issue via MCP (github_pr_context, github_review_list_threads, github_pr_list_issue_comments). Also fetch all not-minimized user comments under the source Issue and child Issues.{{- else }}Refresh context for the source Issue and the focus Issue via gh. Also fetch all not-minimized user comments under the source Issue and child Issues.{{- end }}
 2) Locate existing planning artifacts (a plan comment in the source Issue and/or child Issues with the `AI-PLAN-PARENT` marker).
 3) Apply the clarification and update results:
    - if the user asks to refine/rework: edit the existing result (comment/Issue body) without creating new ones.
@@ -133,7 +134,12 @@ Tools:
   - Render: `codexctl render --env {{ .Env }} ...` (use `--only-services/--only-infra` when needed).
   - Do not run apply during plan review; if you must reference it, use filters and avoid full apply and the `codex` service.
 - `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
+{{- if $reviewMCP }}
+- MCP (github_review_mcp): PR/Issue comments, labels, bodies, search, questions (github_pr_context, github_review_list_threads, github_pr_list_issue_comments, github_pr_add_comment, github_review_reply_thread, github_pr_update_body, github_issue_update_body, github_pr_set_labels, github_search_issues, github_ask_question).
+- gh: use only if MCP does not provide the required data.
+{{- else }}
 - gh: read/comment Issues/PRs, create/edit Issues (only if requested).
+{{- end }}
 - gh credentials: token is in CODEXCTL_GH_PAT, username in CODEXCTL_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: read HTTP endpoints.
 - rg (ripgrep)
