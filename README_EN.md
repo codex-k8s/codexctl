@@ -368,6 +368,7 @@ Configuration for integration with the Codex agent:
 - `codex.servicesOverview` — an overview of infrastructure/application services and their URLs/ports; also included in prompts.
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — timeouts for `prompt run` and for waiting on rollouts.
 - `codex.configBlocks` — TOML fragments appended to the generated `~/.codex/config.toml`.
+- `codex.reviewMCPEnabled` — enables MCP review workflow in prompt templates (when the MCP server is configured).
 - `codex.mcp.servers` — declarative MCP server definitions (stdio/http/cluster) for Codex.
 
 These fields are used when rendering built-in prompts (`dev_issue_*`, `plan_issue_*`, `plan_review_*`, `dev_review_*`,
@@ -396,22 +397,51 @@ Example (includes `yaml-mcp-server`): https://github.com/codex-k8s/yaml-mcp-serv
 
 ```yaml
 codex:
+  reviewMCPEnabled: true
   mcp:
     servers:
-      - name: yaml_mcp
+      - name: github_secrets_postgres_k8s_mcp
         type: cluster
-        description: "Approval gateway (yaml-mcp-server)."
+        description: "Approval gateway (yaml-mcp-server) for GitHub secrets and PostgreSQL."
         tool_timeout_sec: 3600
         service:
-          name: yaml-mcp-server
+          name: yaml-mcp-secrets-postgres-k8s
           namespace: codex-system
           port: 8080
           path: /mcp
         tools:
-          - name: yaml_mcp_create_github_secret_k8s
-            description: "Safe creation of a GitHub Secret and writing it to a K8s Secret."
-          - name: yaml_mcp_create_psql_db_k8s
-            description: "Create a Postgres DB using K8s secret names within the specified namespace."
+          - name: github_create_env_secret_k8s
+            description: "Create a GitHub secret and inject it into a K8s Secret."
+          - name: k8s_create_postgres_db
+            description: "Create a Postgres DB using secret names stored in K8s."
+      - name: github_review_mcp
+        type: cluster
+        description: "Deterministic replies to PR review comments and questions."
+        tool_timeout_sec: 600
+        service:
+          name: yaml-mcp-github-review
+          namespace: codex-system
+          port: 8080
+          path: /mcp
+        tools:
+          - name: github_review_list_threads
+            description: "List unresolved review threads."
+          - name: github_review_reply_thread
+            description: "Reply to a review thread with auto‑quote."
+          - name: github_review_resolve_thread
+            description: "Resolve a review thread."
+          - name: github_pr_add_comment
+            description: "Add a comment to the PR conversation."
+          - name: github_pr_update_body
+            description: "Overwrite the PR body."
+          - name: github_issue_update_body
+            description: "Overwrite the issue body."
+          - name: github_pr_set_labels
+            description: "Set semantic PR labels (feature/bug/doc/debt/idea/epic)."
+          - name: github_search_issues
+            description: "Search issues and PRs in the repository."
+          - name: github_ask_question
+            description: "Ask a clarification question on an Issue or PR."
       - name: context7
         type: stdio
         command: npx
@@ -440,9 +470,13 @@ Generated `~/.codex/config.toml` fragment:
 
 ```toml
 # MCP servers (from services.yaml)
-[mcp_servers.yaml_mcp]
-url = "http://yaml-mcp-server.codex-system.svc.cluster.local:8080/mcp"
+[mcp_servers.github_secrets_postgres_k8s_mcp]
+url = "http://yaml-mcp-secrets-postgres-k8s.codex-system.svc.cluster.local:8080/mcp"
 tool_timeout_sec = 3600
+
+[mcp_servers.github_review_mcp]
+url = "http://yaml-mcp-github-review.codex-system.svc.cluster.local:8080/mcp"
+tool_timeout_sec = 600
 
 [mcp_servers.context7]
 command = "npx"

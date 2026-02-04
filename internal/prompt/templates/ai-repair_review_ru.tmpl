@@ -1,6 +1,7 @@
 {{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
 {{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
 {{- $stagingNs := printf "%s-ai-staging" .Project -}}
+{{- $reviewMCP := .Codex.ReviewMCPEnabled -}}
 {{- if eq $mode "short" }}
 Продолжай работу над восстановлением инфраструктуры текущего проекта, развернутой в kubernetes‑кластере.
 Текущая задача - закрыть все нерешённые комментарии review (changes_requested), внести фиксы, закоммитить, запушить и ответить в PR.
@@ -15,25 +16,27 @@
 - Слот: {{ envOr "CODEXCTL_SLOT" "" }}
 - Номер PR (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
 
+{{- if $reviewMCP }}
+Детерминированный review‑workflow через MCP:
+1) Список нерешённых тредов: `github_review_list_threads`.
+2) Детали треда при необходимости: `github_review_get_thread`.
+3) После фикса: `github_review_reply_thread` (цитата добавляется автоматически) → `github_review_resolve_thread`.
+4) Итоговый/общий комментарий в PR: `github_pr_add_comment`.
+Если MCP не покрывает нужную операцию — допускается `gh` как исключение.
+{{- else }}
+Review‑workflow через gh (MCP недоступен):
 {{- if .ReviewComments }}
-
-Нерешённые комментарии review (актуальные):
+Нерешённые комментарии review (минимально):
 {{- range .ReviewComments }}
 - [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
-{{- if .Body }}
-  {{ .Body }}
 {{- end }}
-{{- end }}
-
-Как отвечать:
-- В ответах указывай ID комментариев (#ID).
 {{- else }}
-
-Нерешённых комментариев нет (или они скрыты), собери весь контекст из PR и исходного Issue и продолжай работу.
+Нерешённых комментариев нет (или они скрыты), собери полный контекст в PR/Issue.
+{{- end }}
 {{- end }}
 
 Короткий сценарий:
-1) Обновить контекст PR и комментариев через gh.
+1) {{- if $reviewMCP }}Обновить контекст PR и комментариев через MCP (github_pr_context, github_review_list_threads).{{- else }}Обновить контекст PR и комментариев через gh.{{- end }}
 2) Внести необходимые правки и проверить инфраструктуру проекта в кластере.
 3) Закоммитить, запушить, ответить на каждый комментарий и оставить итоговый комментарий в PR. Убедиться, что тело PR заканчивается строкой `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
 {{- else }}
@@ -80,22 +83,15 @@
 Сначала диагностируй и восстанови, затем продолжайте исправления по review.
 {{- end }}
 
-{{- if .ReviewComments }}
-
-Нерешённые комментарии review (актуальные):
-{{- range .ReviewComments }}
-- [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
-{{- if .Body }}
-  {{ .Body }}
-{{- end }}
-{{- end }}
-
-Как отвечать:
-- Указывайте ID комментариев (#ID) в ответах.
-  Пример: `gh api -X POST repos/$CODEXCTL_REPO/pulls/comments/ID/replies -f body='...'`.
+{{- if $reviewMCP }}
+Детерминированный review‑workflow через MCP:
+- Список нерешённых тредов: `github_review_list_threads`.
+- Детали треда при необходимости: `github_review_get_thread`.
+- После фикса: `github_review_reply_thread` (цитата добавляется автоматически) → `github_review_resolve_thread`.
+- Итоговый/общий комментарий в PR: `github_pr_add_comment`.
+Если MCP не покрывает нужную операцию — допускается `gh` как исключение.
 {{- else }}
-
-Нерешённых комментариев нет (или они скрыты), собери весь контекст из PR и исходного Issue и продолжай работу.
+Review‑workflow через gh (MCP недоступен).
 {{- end }}
 
 Инструменты:
@@ -109,7 +105,12 @@
   - Применение: только `--only-services/--only-infra` (или `--skip-*`), без полного apply.
   - Не включайте сервис `codex` в apply.
 - `services.yaml` — источник правды по сервисам/окружениям; при добавлении/удалении сервисов и правках деплой‑шаблонов обновляйте `services.yaml`.
+{{- if $reviewMCP }}
+- MCP (GitHub review): основной путь для комментариев/ответов/resolve (см. список MCP‑серверов ниже).
+- gh: использовать только в крайних случаях, когда MCP‑инструментов недостаточно.
+{{- else }}
 - gh: чтение/комментирование PR и review.
+{{- end }}
 - Доступы для gh: токен в CODEXCTL_GH_PAT, логин в CODEXCTL_GH_USERNAME; gh уже авторизован, при необходимости выполните `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: проверка HTTP‑эндпоинтов.
 - rg (ripgrep)
@@ -142,11 +143,29 @@
 - Прочитай требования в `./AGENTS.md` и всех связанных документах в репозитории.
 - Слаг репозитория — в `CODEXCTL_REPO`.
 - Номер PR — в `CODEXCTL_PR_NUMBER`.
+{{- if $reviewMCP }}
+- Используй MCP‑инструменты:
+  - `github_pr_context` — контекст PR.
+  - `github_review_list_threads` / `github_review_get_thread` — нерешённые треды и детали.
+  - `github_pr_list_issue_comments` — комментарии PR conversation.
+- Если MCP не покрывает нужную информацию, допускается `gh` как исключение:
+  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$CODEXCTL_REPO"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$CODEXCTL_REPO"` для обзора.
+  - `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` и
+    `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/comments` для подробных нитей.
+{{- else }}
 - Используй:
   - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$CODEXCTL_REPO"`.
   - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$CODEXCTL_REPO"` для обзора.
-  - При необходимости: `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` и
+  - `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` и
     `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/comments` для подробных нитей.
+{{- if .ReviewComments }}
+- Нерешённые комментарии review (минимально):
+{{- range .ReviewComments }}
+  - [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
+{{- end }}
+{{- end }}
+{{- end }}
 - Если задан `CODEXCTL_ISSUE_NUMBER`, получи контекст исходной задачи:
   - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 

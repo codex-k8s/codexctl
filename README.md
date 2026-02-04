@@ -361,6 +361,7 @@ codexctl apply --only-services django-backend,chat-backend,web-frontend --wait
 - `codex.servicesOverview` — обзор инфраструктурных/прикладных сервисов и их URL/порты; также попадает в промпты.
 - `codex.timeouts.exec`/`codex.timeouts.rollout` — таймауты для `prompt run` и ожидания rollout’ов.
 - `codex.configBlocks` — TOML‑фрагменты, которые будут добавлены к сгенерённому `~/.codex/config.toml`.
+- `codex.reviewMCPEnabled` — включает MCP‑review‑workflow в шаблонах промптов (если подключён соответствующий MCP).
 - `codex.mcp.servers` — декларативное описание MCP‑серверов (stdio/http/cluster) для Codex.
 
 Эти поля используются при рендере встроенных промптов (`dev_issue_*`, `plan_issue_*`, `plan_review_*`,
@@ -388,22 +389,51 @@ MCP‑серверы можно описывать прямо в `services.yaml`
 
 ```yaml
 codex:
+  reviewMCPEnabled: true
   mcp:
     servers:
-      - name: yaml_mcp
+      - name: github_secrets_postgres_k8s_mcp
         type: cluster
-        description: "Approval gateway (yaml-mcp-server)."
+        description: "Approval gateway (yaml-mcp-server) для GitHub secrets и PostgreSQL."
         tool_timeout_sec: 3600
         service:
-          name: yaml-mcp-server
+          name: yaml-mcp-secrets-postgres-k8s
           namespace: codex-system
           port: 8080
           path: /mcp
         tools:
-          - name: yaml_mcp_create_github_secret_k8s
+          - name: github_create_env_secret_k8s
             description: "Безопасное создание GitHub Secret и запись его в K8s Secret."
-          - name: yaml_mcp_create_psql_db_k8s
+          - name: k8s_create_postgres_db
             description: "Создание БД в Postgres по именам секретов в K8s в указанном namespace."
+      - name: github_review_mcp
+        type: cluster
+        description: "Детерминированные ответы на review‑комментарии и вопросы в PR."
+        tool_timeout_sec: 600
+        service:
+          name: yaml-mcp-github-review
+          namespace: codex-system
+          port: 8080
+          path: /mcp
+        tools:
+          - name: github_review_list_threads
+            description: "Список нерешённых review‑тредов."
+          - name: github_review_reply_thread
+            description: "Ответ в review‑тред с авто‑цитатой."
+          - name: github_review_resolve_thread
+            description: "Пометить review‑тред решённым."
+          - name: github_pr_add_comment
+            description: "Добавить комментарий в PR conversation."
+          - name: github_pr_update_body
+            description: "Полная перезапись PR body."
+          - name: github_issue_update_body
+            description: "Полная перезапись Issue body."
+          - name: github_pr_set_labels
+            description: "Установить семантические лейблы PR (feature/bug/doc/debt/idea/epic)."
+          - name: github_search_issues
+            description: "Поиск задач и PR в репозитории."
+          - name: github_ask_question
+            description: "Задать уточняющий вопрос в Issue или PR."
       - name: context7
         type: stdio
         command: npx
@@ -432,9 +462,13 @@ headers:
 
 ```toml
 # MCP servers (from services.yaml)
-[mcp_servers.yaml_mcp]
-url = "http://yaml-mcp-server.codex-system.svc.cluster.local:8080/mcp"
+[mcp_servers.github_secrets_postgres_k8s_mcp]
+url = "http://yaml-mcp-secrets-postgres-k8s.codex-system.svc.cluster.local:8080/mcp"
 tool_timeout_sec = 3600
+
+[mcp_servers.github_review_mcp]
+url = "http://yaml-mcp-github-review.codex-system.svc.cluster.local:8080/mcp"
+tool_timeout_sec = 600
 
 [mcp_servers.context7]
 command = "npx"

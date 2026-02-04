@@ -86,6 +86,8 @@ type CodexConfig struct {
 	// ConfigBlocks are additional TOML fragments appended to the generated Codex config.
 	// Each block is rendered as a template with the stack context.
 	ConfigBlocks []CodexConfigBlock `yaml:"configBlocks,omitempty"`
+	// ReviewMCPEnabled toggles MCP-based review workflows in prompt templates.
+	ReviewMCPEnabled bool `yaml:"reviewMCPEnabled,omitempty"`
 	// MCP defines Model Context Protocol server configuration.
 	MCP CodexMCPConfig `yaml:"mcp,omitempty"`
 }

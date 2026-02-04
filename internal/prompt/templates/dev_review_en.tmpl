@@ -1,5 +1,6 @@
 {{- $mode := toLower (default (envOr "CODEXCTL_PROMPT_MODE" "") "full") -}}
 {{- $continuation := envOr "CODEXCTL_PROMPT_CONTINUATION" "" -}}
+{{- $reviewMCP := .Codex.ReviewMCPEnabled -}}
 {{- if eq $mode "short" }}
 Continue working on the existing Pull Request in this Codex session.
 Your goal is to close all unresolved review comments (changes_requested), apply fixes, commit, push, and reply in the PR.
@@ -16,25 +17,27 @@ Environment context:
 - Slot: {{ envOr "CODEXCTL_SLOT" "" }}
 - PR number (CODEXCTL_PR_NUMBER): {{ envOr "CODEXCTL_PR_NUMBER" "" }}
 
+{{- if $reviewMCP }}
+Deterministic review workflow via MCP:
+1) List unresolved threads: `github_review_list_threads`.
+2) Thread details if needed: `github_review_get_thread`.
+3) After fixing: `github_review_reply_thread` (auto‑quotes) → `github_review_resolve_thread`.
+4) Final/general PR comment: `github_pr_add_comment`.
+If MCP does not cover a needed action, `gh` is allowed only as an exception.
+{{- else }}
+Review workflow via gh (MCP unavailable):
 {{- if .ReviewComments }}
-
-Unresolved review comments (current):
+Unresolved review comments (minimal):
 {{- range .ReviewComments }}
 - [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
-{{- if .Body }}
-  {{ .Body }}
 {{- end }}
-{{- end }}
-
-How to reply:
-- Include the comment IDs (#ID) in your replies.
 {{- else }}
-
-There are no unresolved review comments (or they are hidden/minimized). Gather full context from the PR and the source Issue and continue the work.
+There are no unresolved review comments (or they are hidden/minimized). Gather full context from PR/Issue.
+{{- end }}
 {{- end }}
 
 Short workflow:
-1) Refresh PR context and unresolved comments via gh.
+1) {{- if $reviewMCP }}Refresh PR context and unresolved comments via MCP (github_pr_context, github_review_list_threads).{{- else }}Refresh PR context and unresolved comments via gh.{{- end }}
 2) Make the required changes and verify the services.
 3) Commit, push, reply to each comment, and leave a final comment in the PR. Ensure the PR body ends with `Closes #{{ envOr "CODEXCTL_ISSUE_NUMBER" "" }}`.
 {{- else }}
@@ -100,22 +103,15 @@ Attention: infrastructure is not ready (wait timeout/failed wait).
 - After recovery, continue with the review fixes.
 {{- end }}
 
-{{- if .ReviewComments }}
-
-Unresolved review comments (current):
-{{- range .ReviewComments }}
-- [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
-{{- if .Body }}
-  {{ .Body }}
-{{- end }}
-{{- end }}
-
-How to reply:
-- Include the comment IDs (#ID) in your replies.
-  Example: `gh api -X POST repos/$CODEXCTL_REPO/pulls/comments/ID/replies -f body='...'`.
+{{- if $reviewMCP }}
+Deterministic review workflow via MCP:
+- List unresolved threads: `github_review_list_threads`.
+- Thread details if needed: `github_review_get_thread`.
+- After fixing: `github_review_reply_thread` (auto‑quotes) → `github_review_resolve_thread`.
+- Final/general PR comment: `github_pr_add_comment`.
+If MCP does not cover a needed action, `gh` is allowed only as an exception.
 {{- else }}
-
-There are no unresolved review comments (or they are hidden/minimized). Gather full context from the PR and the source Issue and continue the work.
+Review workflow via gh (MCP unavailable).
 {{- end }}
 
 Tools:
@@ -128,7 +124,12 @@ Tools:
   - Render: `codexctl render --env {{ .Env }} ...` (use `--only-services/--only-infra` when needed).
   - Apply: use filters `--only-services/--only-infra` (or `--skip-*`), never run `codexctl apply` without filters and never include the `codex` service.
 - `services.yaml` is the source of truth for services/envs; when adding/removing services or changing deploy templates, update `services.yaml` alongside manifests.
+{{- if $reviewMCP }}
+- MCP (GitHub review): primary path for comments/replies/resolve (see MCP servers list below).
+- gh: only as a last resort when MCP tools are insufficient.
+{{- else }}
 - gh: read/comment PRs and reviews.
+{{- end }}
 - gh credentials: token is in CODEXCTL_GH_PAT, username in CODEXCTL_GH_USERNAME; gh is already authenticated, if needed run `printf %s "$CODEXCTL_GH_PAT" | gh auth login --with-token`.
 - curl / httpie: test HTTP endpoints (via Ingress/dev-grpc-gateway).
 - rg (ripgrep)
@@ -161,11 +162,29 @@ Context to restore and review:
 - Read the requirements in `./AGENTS.md` and all related documents in the repository.
 - Repository slug is in `CODEXCTL_REPO` (for example, `owner/repo`).
 - PR number is in `CODEXCTL_PR_NUMBER`.
+{{- if $reviewMCP }}
+- Use MCP tools:
+  - `github_pr_context` — PR context.
+  - `github_review_list_threads` / `github_review_get_thread` — unresolved threads and details.
+  - `github_pr_list_issue_comments` — PR conversation comments.
+- If MCP does not cover the needed information, `gh` is allowed as an exception:
+  - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$CODEXCTL_REPO"`.
+  - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$CODEXCTL_REPO"` for an overview.
+  - `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` and
+    `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/comments` for detailed threads.
+{{- else }}
 - Use:
   - `gh pr view $CODEXCTL_PR_NUMBER --json number,title,state,body,url,headRefName,baseRefName,commits,files --repo "$CODEXCTL_REPO"`.
   - `gh pr view $CODEXCTL_PR_NUMBER --comments --repo "$CODEXCTL_REPO"` for an overview.
-  - If needed: `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` and
+  - `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/reviews` and
     `gh api repos/$CODEXCTL_REPO/pulls/$CODEXCTL_PR_NUMBER/comments` for detailed threads.
+{{- if .ReviewComments }}
+- Unresolved review comments (minimal):
+{{- range .ReviewComments }}
+  - [#{{ .ID }}] PR #{{ .PRNumber }} ({{ .Author }}): {{ .URL }}
+{{- end }}
+{{- end }}
+{{- end }}
 - If `CODEXCTL_ISSUE_NUMBER` is set, fetch the source issue context:
   - `gh issue view $CODEXCTL_ISSUE_NUMBER --json number,title,state,author,body,url,labels,assignees,comments --repo "$CODEXCTL_REPO"`.
 
