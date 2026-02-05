@@ -5,7 +5,7 @@ If you update README_RU.md, please update this file as well.
 
 <div align="center">
   <img src="docs/media/logo.png" alt="PAI logo" width="120" height="120" />
-  <h1>codexctl</h1>
+  <h1>CodeXCTL</h1>
   <p>🧠 A tool for managing cloud-based planning and development workflows in a Kubernetes cluster via AI agents, based on <a href="https://github.com/openai/codex">OpenAI’s codex-cli</a> and GitHub workflows.</p>
 </div>
 
@@ -14,7 +14,7 @@ If you update README_RU.md, please update this file as well.
 
 🇷🇺 Русская версия: [README_RU.md](README_RU.md)
 
-`codexctl` is a CLI tool for declarative management of Kubernetes environments and AI-dev slots from a single configuration
+CodeXCTL is a CLI tool for declarative management of Kubernetes environments and AI-dev slots from a single configuration
 file, `services.yaml`. It simplifies:
 
 - deploying infrastructure (databases, caches, ingress, observability) and applications in Kubernetes projects;
@@ -48,6 +48,13 @@ Related repositories:
 - `yaml-mcp-server` — MCP gateway for safe model actions: https://github.com/codex-k8s/yaml-mcp-server
 - `telegram-approver` — Telegram approver for approval flow: https://github.com/codex-k8s/telegram-approver
 - `project-example` — project example with manifests and wrapper GitHub Actions workflows: https://github.com/codex-k8s/project-example
+
+## 📘 Engineering Guidelines
+
+- `AGENTS.md` — mandatory agent instructions for this repository.
+- `docs/design-guidelines/AGENTS.md` — entrypoint for engineering standards.
+- `docs/design-guidelines/common/check_list.md` — mandatory checklist before PR.
+- `docs/design-guidelines/go/check_list.md` — mandatory checklist for Go changes.
 
 ---
 
@@ -242,7 +249,8 @@ codex:
     - title: Django admin
       path: /admin/
   projectContext: |
-    - Before starting, read ./AGENTS.md and relevant docs in docs/*.md.
+    - Before starting, read ./AGENTS.md and ./docs/design-guidelines/AGENTS.md.
+    - Follow the relevant standards from ./docs/design-guidelines/common/* and ./docs/design-guidelines/go/*.
     - When working with manifests, use `codexctl render` and `codexctl apply` only with filters `--only-services/--only-infra` (or `--skip-*`).
   servicesOverview: |
     - Django backend: admin UI and PostgreSQL DB migrations.

@@ -56,12 +56,20 @@ Contributions of all kinds are welcome: bug reports, documentation fixes, small 
    - how you tested the change;
    - any impact on documentation or examples.
 
+## Engineering standards (mandatory)
+
+- Read `AGENTS.md` before starting implementation work.
+- Use `docs/design-guidelines/AGENTS.md` as the entrypoint for architecture and coding standards.
+- Complete `docs/design-guidelines/common/check_list.md` before opening a PR.
+- For Go code changes, also complete `docs/design-guidelines/go/check_list.md`.
+
 ## Coding and documentation guidelines
 
 - Keep functions small and focused; avoid unnecessary complexity.
 - Prefer clear, explicit naming over abbreviations.
 - Write doc comments for exported types and functions in English.
-- Update `README.md` / `README_EN.md` when behavior or CLI interface changes.
+- Update `README.md` / `README_RU.md` when behavior or CLI interface changes.
+- Update `docs/design-guidelines/**` when architectural standards or integration contracts change.
 
 ## Reporting issues
 
@@ -72,4 +80,3 @@ When filing an issue, please include:
 - a minimal reproduction (commands, `services.yaml` snippets, logs) when possible.
 
 Bug reports and suggestions are very helpful even if you do not plan to send a PR. Thank you for helping improve `codexctl`!
-

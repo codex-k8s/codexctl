@@ -1,6 +1,6 @@
 <div align="center">
   <img src="docs/media/logo.png" alt="PAI logo" width="120" height="120" />
-  <h1>codexctl</h1>
+  <h1>CodeXCTL</h1>
   <p>🧠 Инструмент для управления облачными процессами планирования и разработки в Kubernetes‑кластере через ИИ‑агентов на основе <a href="https://github.com/openai/codex">codex-cli от OpenAI</a> и GitHub‑workflow.</p>
 </div>
 
@@ -9,7 +9,7 @@
 
 🇬🇧 English version: [README.md](README.md)
 
-`codexctl` — это CLI‑инструмент для декларативного управления Kubernetes‑окружениями и AI-dev слотами на базе одного
+CodeXCTL — это CLI‑инструмент для декларативного управления Kubernetes‑окружениями и AI-dev слотами на базе одного
 файла конфигурации `services.yaml`. Он упрощает:
 
 - развёртывание инфраструктуры (БД, кэши, ingress, observability) и приложений в Kubernetes‑проектах;
@@ -43,6 +43,13 @@
 - `yaml-mcp-server` — MCP‑gateway для безопасных операций модели: https://github.com/codex-k8s/yaml-mcp-server
 - `telegram-approver` — Telegram‑аппрувер для approval‑флоу: https://github.com/codex-k8s/telegram-approver
 - `project-example` — пример проекта с манифестами и wrapper‑workflow’ами GitHub Actions: https://github.com/codex-k8s/project-example
+
+## 📘 Инженерные гайды
+
+- `AGENTS.md` — обязательные инструкции для агентов в этом репозитории.
+- `docs/design-guidelines/AGENTS.md` — точка входа в инженерные стандарты.
+- `docs/design-guidelines/common/check_list.md` — обязательный чек‑лист перед PR.
+- `docs/design-guidelines/go/check_list.md` — обязательный чек‑лист для Go‑изменений.
 
 ---
 
@@ -235,7 +242,8 @@ codex:
     - title: Django admin
       path: /admin/
   projectContext: |
-    - Перед началом работы прочитай ./AGENTS.md и релевантную документацию в docs/*.md.
+    - Перед началом работы прочитай ./AGENTS.md и ./docs/design-guidelines/AGENTS.md.
+    - Следуй релевантным стандартам из ./docs/design-guidelines/common/* и ./docs/design-guidelines/go/*.
     - Для работы с манифестами используй `codexctl render` и `codexctl apply` только с фильтрами `--only-services/--only-infra` (или `--skip-*`).
   servicesOverview: |
     - Django backend: админка и миграции БД PostgreSQL.
