@@ -272,7 +272,8 @@ Postgres/pgvector — **индекс/метаданные/аудит**, но н�
 
     1. гарантирует наличие docset для issue,
     2. добавляет/обновляет связи `issue ↔ doc_id` через MCP,
-    3. при создании PR добавляет link на docset и список артефактов в описание PR.
+    3. при создании PR добавляет link на docset и список артефактов в описание PR,
+    4. синхронизирует `Issue ↔ Docs Map` (issue_map) для трассируемости.
 
 ---
 
@@ -306,6 +307,7 @@ Postgres/pgvector — **индекс/метаданные/аудит**, но н�
 
 * `docset_sync_issue` (создать/обновить docset issue)
 * `docset_sync_pr`
+* `docset_sync_issue_map` (обновить matrix traceability `Issue/PR ↔ docs ↔ release`)
 * `docset_validate_required_artifacts`
 
 > DocSet‑агент делает это через MCP (правило #5).
@@ -341,25 +343,25 @@ Postgres/pgvector — **индекс/метаданные/аудит**, но н�
 
 ### 8.1. Trigger‑лейблы `run:*` (запускают воркфлоу)
 
-* `run:intake` — старт “идея/проект”
+* `run:intake` — старт “идея/проект”: сформировать intake-пакет (Problem Statement, Personas, MVP Scope, Constraints, Brief, начальный DocSet)
 * `run:intake:revise` — доработка intake по комментариям/ответам владельца продукта
-* `run:vision` — сформировать Vision/Scope (Project Charter)
+* `run:vision` — сформировать Vision/Scope (Project Charter) + Success Metrics + Risk Register
 * `run:vision:revise` — доработка Vision/Scope
 * `run:prd` — сформировать PRD/требования
 * `run:prd:revise` — доработка PRD
-* `run:arch` — сформировать Architecture Overview + ADR backlog + NFR
+* `run:arch` — сформировать Architecture Overview (C4 Context/Container) + Alternatives + ADR backlog + NFR
 * `run:arch:revise` — доработка архитектуры/ADR
-* `run:design` — сформировать Detailed Design (контракты/API/DB/sequence)
+* `run:design` — сформировать Detailed Design + API Contract + Data Model + Migrations Policy
 * `run:design:revise` — доработка detailed design
-* `run:plan` — сформировать Delivery Plan: эпики/issue/майлстоуны + связи с docset
+* `run:plan` — сформировать Delivery Plan: epic/story/dependencies/milestones + Definition of Done + roadmap-срез + связи с docset
 * `run:plan:revise` — доработка плана
 * `run:dev` — разработка (код) по issue (аналог текущего dev‑флоу, но в новой схеме) ([GitHub][2])
 * `run:dev:revise` — доработка кода по комментариям владельца продукта (не вместо code review)
-* `run:doc-audit` — аудит соответствия (документы/чек‑листы ↔ код)
-* `run:qa` — подготовить/обновить тест‑артефакты + прогон тестов (где применимо)
-* `run:release` — релиз (подготовка + выполнение) с апрувом
-* `run:postdeploy` — PostDeployReview (QA+SRE) и фиксация выводов
-* `run:ops` — эксплуатация/мониторинг: SLO/алерты/runbooks, улучшения
+* `run:doc-audit` — аудит соответствия (документы/чек‑листы ↔ код) + обновление Issue Map
+* `run:qa` — подготовить/обновить Test Strategy/Test Plan/Test Matrix/Regression Checklist + прогон тестов
+* `run:release` — релиз (подготовка + выполнение): Release Plan + Rollback Plan + Release Notes
+* `run:postdeploy` — PostDeployReview (QA+SRE) и, при инциденте, Incident Postmortem
+* `run:ops` — эксплуатация/мониторинг: Monitoring/SLO/Alerts/Runbook/Incident Playbook + улучшения
 * `run:abort` — отмена/откат текущей инициативы/фичи (cleanup + пометка артефактов)
 * `run:rethink` — переосмысление: перевести работу на более ранний этап (создать новую ветку документов/версии)
 
@@ -439,25 +441,25 @@ Postgres/pgvector — **индекс/метаданные/аудит**, но н�
 
 | Лейбл               | Workflow (название)       | Кто/когда запускает                       | Артефакты на входе                   | Артефакты на выходе                                                               |
 | ------------------- | ------------------------- | ----------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------- |
-| `run:intake`        | `wf_intake_draft`         | Owner (вешает лейбл на issue “идея/проект”) | Issue (описание идеи), контекст репо | Project/Feature Brief (docs), список вопросов, начальный docset                   |
-| `run:intake:revise` | `wf_intake_revise`        | Owner (после комментариев/ответов)          | Brief v1 + ответы (Telegram/GH)      | Brief v2, обновлённый docset                                                      |
-| `run:vision`        | `wf_vision_draft`         | Owner / через Telegram approve “Proceed”    | Approved Brief                       | Vision/Scope (Charter), метрики, риски, docset                                    |
+| `run:intake`        | `wf_intake_draft`         | Owner (вешает лейбл на issue “идея/проект”) | Issue (описание идеи), контекст репо | Problem Statement + Personas + MVP Scope + Constraints + Brief + список вопросов + начальный docset |
+| `run:intake:revise` | `wf_intake_revise`        | Owner (после комментариев/ответов)          | Intake-пакет v1 + ответы (Telegram/GH) | Intake-пакет v2, обновлённый docset                                             |
+| `run:vision`        | `wf_vision_draft`         | Owner / через Telegram approve “Proceed”    | Approved intake-пакет                | Project Charter + Success Metrics + Risk Register + docset                         |
 | `run:vision:revise` | `wf_vision_revise`        | Owner                                       | Vision draft + комменты              | Vision v2                                                                         |
-| `run:prd`           | `wf_prd_draft`            | Owner                                       | Approved Vision/Brief                | PRD (MVP/Scope/NFR/AC), backlog гипотез                                           |
+| `run:prd`           | `wf_prd_draft`            | Owner                                       | Approved Vision/Intake               | PRD (MVP/Scope/NFR/AC), backlog гипотез, актуализация связей с personas/scope      |
 | `run:prd:revise`    | `wf_prd_revise`           | Owner                                       | PRD draft + комменты                 | PRD v2                                                                            |
-| `run:arch`          | `wf_arch_draft`           | Owner                                       | Approved PRD + constraints           | Architecture Overview (C4), ADR backlog, NFR, риски                               |
-| `run:arch:revise`   | `wf_arch_revise`          | Owner                                       | Arch draft + комменты                | Arch v2 + ADR updates                                                             |
-| `run:design`        | `wf_design_draft`         | Owner                                       | Approved Arch/ADR list               | Detailed Design: API, DB, sequence, миграции, план тестирования на уровне дизайна |
+| `run:arch`          | `wf_arch_draft`           | Owner                                       | Approved PRD + constraints           | Architecture Overview (C4 Context/Container) + Alternatives + ADR backlog + NFR    |
+| `run:arch:revise`   | `wf_arch_revise`          | Owner                                       | Arch draft + комменты                | Arch v2 + обновлённые ADR/Alternatives                                            |
+| `run:design`        | `wf_design_draft`         | Owner                                       | Approved Arch/ADR list               | Design Doc + API Contract + Data Model + Migrations Policy + sequence/test design  |
 | `run:design:revise` | `wf_design_revise`        | Owner                                       | Design draft + комменты              | Design v2                                                                         |
-| `run:plan`          | `wf_delivery_plan_draft`  | Owner                                       | Approved Design + constraints        | Issue/epic план, milestone’ы, зависимости, авто‑линковка docset                   |
-| `run:plan:revise`   | `wf_delivery_plan_revise` | Owner                                       | Plan draft + комменты                | Plan v2                                                                           |
+| `run:plan`          | `wf_delivery_plan_draft`  | Owner                                       | Approved Design + constraints        | Delivery Plan + Epic/User Story пакет + Definition of Done + roadmap-срез + docset links |
+| `run:plan:revise`   | `wf_delivery_plan_revise` | Owner                                       | Plan draft + комменты                | Plan v2 + обновлённые story/epic/roadmap                                          |
 | `run:dev`           | `wf_dev_issue`            | Owner (на конкретном issue фичи/таски)      | Approved Plan + design refs          | PR с кодом, обновлённые docs/ADR (если нужно), запись сессии/токенов              |
 | `run:dev:revise`    | `wf_dev_revise`           | Owner                                       | PR comments/Telegram feedback        | Доп. коммиты в PR                                                                 |
-| `run:doc-audit`     | `wf_doc_audit`            | Owner (обычно перед merge)                  | PR + docset + чек‑листы              | Отчёт аудита (comment + docs)                                                     |
-| `run:qa`            | `wf_qa`                   | Owner / по готовности PR                    | PR + PRD/AC + тест‑план              | Test artifacts + результаты прогонов/отчёт                                        |
-| `run:release`       | `wf_release`              | Owner (после merge)                         | merged main + release plan           | релиз‑артефакты (tag, changelog, release note) + запись событий                   |
-| `run:postdeploy`    | `wf_postdeploy_review`    | Owner (после релиза)                        | релиз, метрики/логи                  | PostDeployReview doc + action items                                               |
-| `run:ops`           | `wf_ops_improvements`     | Owner / периодически                        | PostDeploy/инциденты                 | runbooks/alerts/SLO improvements + новые issue                                    |
+| `run:doc-audit`     | `wf_doc_audit`            | Owner (обычно перед merge)                  | PR + docset + чек‑листы              | Отчёт аудита (comment + docs) + обновлённый Issue Map                              |
+| `run:qa`            | `wf_qa`                   | Owner / по готовности PR                    | PR + PRD/AC + test design            | Test Strategy + Test Plan + Test Matrix + Regression Checklist + результаты прогонов |
+| `run:release`       | `wf_release`              | Owner (после merge)                         | merged main + release readiness      | Release Plan + Rollback Plan + Release Notes + tag/release + запись событий        |
+| `run:postdeploy`    | `wf_postdeploy_review`    | Owner (после релиза)                        | релиз, метрики/логи                  | PostDeployReview doc + Incident Postmortem (если был инцидент) + action items      |
+| `run:ops`           | `wf_ops_improvements`     | Owner / периодически                        | PostDeploy/инциденты                 | Monitoring + SLO + Alerts + Runbook + Incident Playbook + новые issue              |
 | `run:abort`         | `wf_abort_cleanup`        | Owner (в любой момент)                      | текущий статус + docset              | cleanup слотов/PR статусов, docs помечены abandoned/superseded                    |
 | `run:rethink`       | `wf_rethink`              | Owner                                       | текущие docs + решение владельца     | новая итерация документов (новые версии + связи), старые помечены superseded      |
 
@@ -525,6 +527,10 @@ flowchart LR
 1. **Intake (идея/проект)** — `run:intake`
    Артефакты:
 
+    * Problem Statement
+    * Personas
+    * MVP Scope
+    * Constraints
     * Brief (что делаем, зачем, для кого, ограничения)
     * Список вопросов (если не хватает данных)
     * DocSet issue
@@ -535,7 +541,9 @@ flowchart LR
    Артефакты:
 
     * Project Charter (цели, scope, out-of-scope)
-    * Success metrics, риски, допущения
+    * Success Metrics
+    * Risk Register
+    * Риски, допущения, обновление docset
 
 3. **PRD** — `run:prd`
    Артефакты:
@@ -546,21 +554,28 @@ flowchart LR
 4. **Architecture** — `run:arch`
    Артефакты:
 
-    * Architecture Overview (C4 L1–L2)
+    * Architecture Overview (C4 Context + C4 Container)
+    * Alternatives & Trade-offs
     * ADR backlog (и/или первые ADR)
     * NFR: reliability, security, performance, observability
 
 5. **Detailed Design** — `run:design`
    Артефакты:
 
-    * API contracts (proto/openapi)
-    * DB schema/migrations plan
+    * Detailed Design
+    * API Contract
+    * Data Model
+    * DB Migrations Policy
     * Sequence diagrams по ключевым сценариям
     * Test design (что тестируем, где границы)
 
 6. **Delivery Plan** — `run:plan`
    Артефакты:
 
+    * Delivery Plan
+    * Epic + User Story пакет
+    * Definition of Done
+    * Roadmap (итерационный срез под поставку)
     * Epics/issues, dependencies, milestones
     * DocSet привязки: “какие issue используют какие docs”
 
@@ -576,29 +591,38 @@ flowchart LR
    Артефакты:
 
     * отчёт “что не соответствует / что забыли / что рискованно”
+    * актуализированный Issue ↔ Docs Map
 
 9. **QA** — `run:qa`
    Артефакты:
 
-    * тест‑кейсы/чек‑листы (docs)
+    * Test Strategy
+    * Test Plan
+    * Test Matrix
+    * Regression Checklist
     * результаты прогонов (artifact/report)
 
 10. **Release** — `run:release`
     Артефакты:
 
-* release plan + changelog + tag/release notes
-* события в Postgres (кто, когда, что релизнул)
+    * Release Plan + Rollback Plan + Release Notes
+    * changelog + tag/release
+    * события в Postgres (кто, когда, что релизнул)
 
 11. **PostDeployReview** — `run:postdeploy`
     Артефакты:
 
-* PostDeployReview doc (что увидели QA+SRE, метрики, регрессии, инциденты)
+    * PostDeployReview doc (что увидели QA+SRE, метрики, регрессии, инциденты)
+    * Incident Postmortem (если в релизном окне был инцидент)
 
 12. **Ops/Monitoring + Feedback loop** — `run:ops`
     Артефакты:
 
-* runbooks, SLO, alerts improvements
-* новые issue (инициируются EM/PM агентом через MCP + апрув)
+    * Monitoring & Observability doc
+    * SLO + Alerts
+    * Runbook + Incident Playbook
+    * обновления Risk Register / Roadmap по итогам эксплуатации
+    * новые issue (инициируются EM/PM агентом через MCP + апрув)
 
 ---
 
@@ -699,7 +723,7 @@ flowchart LR
 4. **Docs структура**
 
     * Завести `docs/_docset/**`
-    * Завести `docs/templates/**` (brief/prd/adr/design/test-plan/runbook/postdeploy)
+    * Завести `docs/templates/**` (включая product/arch/qa/release/ops шаблоны: problem, personas, scope, constraints, alternatives, risks, roadmap, story, dod, migrations-policy, monitoring, rollback, incident-playbook, incident-postmortem, issue-map)
     * Завести `docs/_index/**` (TOC)
 
 5. **CI prechecks (без агента)**
