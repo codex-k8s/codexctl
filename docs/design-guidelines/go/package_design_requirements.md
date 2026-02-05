@@ -2,42 +2,73 @@
 
 ## Цель
 
-Задать целевую структуру кода, к которой должны вести все новые изменения.
+Задать целевую структуру и контракты, по которым должна быть рефакторена реализация `codexctl`.
 
-## Целевые зоны
+## Обязательные порты
+
+### `Orchestrator`
+
+Назначение: управление жизненным циклом окружения независимо от платформы.
+
+Минимальный контракт (ориентир):
+
+```go
+type Orchestrator interface {
+    Apply(ctx context.Context, req ApplyRequest) error
+    Delete(ctx context.Context, req DeleteRequest) error
+    WaitReady(ctx context.Context, req WaitRequest) error
+    Status(ctx context.Context, req StatusRequest) (StatusResult, error)
+}
+```
+
+### `Repository`
+
+Назначение: операции с hosting provider (issues, PR, reviews, branches).
+
+Минимальный контракт (ориентир):
+
+```go
+type Repository interface {
+    GetIssue(ctx context.Context, number int) (Issue, error)
+    GetPullRequest(ctx context.Context, number int) (PullRequest, error)
+    FindPullRequestByBranch(ctx context.Context, branch string) (int, error)
+    CreateComment(ctx context.Context, target CommentTarget, body string) error
+    CloseIssue(ctx context.Context, number int) error
+    DeleteBranch(ctx context.Context, branch string) error
+}
+```
+
+Контракты можно расширять, но только при реальной потребности use-case слоя.
+
+## Целевые зоны кода
 
 1. `internal/cli`
-   - только CLI-транспорт: команды, флаги, env binding, вывод;
-   - без инфраструктурной логики и тяжелой оркестрации.
+   - transport и user I/O;
+   - mapping флагов/env в команды use-case.
 2. `internal/application`
-   - use-case сценарии (apply, ensure-ready, cleanup, prompt run, review apply);
-   - orchestration и координация адаптеров;
-   - без знания конкретных внешних библиотек/утилит.
+   - use-case orchestration;
+   - зависимости только от портов.
 3. `internal/core`
-   - инварианты и доменные политики CLI;
-   - чистая логика без side effects.
-4. `internal/adapters/*`
-   - инфраструктурные реализации портов (kube, github, process, state, prompt-config).
+   - policy, инварианты, типы сценариев;
+   - без side effects.
+4. `internal/adapters/orchestrator/*`
+   - реализации `Orchestrator`:
+     - `kubernetes` (на `client-go`);
+     - `dockercompose` (future).
+5. `internal/adapters/repository/*`
+   - реализации `Repository`:
+     - `github` (на `go-github`);
+     - `gitlab` (future).
 
-## Правила модульности
+## Composition root
 
-- Один пакет = одна ответственность.
-- Пакеты не должны формировать циклические зависимости.
-- Входные DTO CLI отделены от внутренних командных моделей use-case слоя.
-- Инфраструктурные ошибки не "протекают" напрямую в пользовательский вывод.
-
-## Политика рефакторинга
-
-Если текущий код не совпадает с целевой моделью:
-
-- разрешается временное использование промежуточных адаптеров и фасадов;
-- новые изменения обязаны уменьшать связность и дублирование;
-- запрещено добавлять новую функциональность в зоны, известные как архитектурный долг,
-  если это усиливает расхождение с эталоном.
+- Сборка конкретных реализаций выполняется в одном месте (bootstrap/composition root).
+- Выбор backend/provider конфигурируется явно, без скрытых глобальных переключателей.
+- Use-case код не должен знать, какой адаптер подключен.
 
 ## Запреты
 
-- Логика сценария в `main.go`.
-- Прямые `exec.Command` в core/application.
-- Смешивание рендера конфигурации и побочных вызовов к внешним системам в одном модуле.
-- Неявные глобальные зависимости через package-level state.
+- SDK-типы `client-go`/`go-github` в `application` и `core`.
+- Прямые вызовы `kubectl`/`gh` из use-case слоя.
+- Платформо-специфичные поля в портовых DTO, если они не универсальны.
+- God-интерфейсы "на всё" вместо сценарно-ориентированных портов.

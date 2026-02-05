@@ -62,6 +62,7 @@ Contributions of all kinds are welcome: bug reports, documentation fixes, small 
 - Use `docs/design-guidelines/AGENTS.md` as the entrypoint for architecture and coding standards.
 - Complete `docs/design-guidelines/common/check_list.md` before opening a PR.
 - For Go code changes, also complete `docs/design-guidelines/go/check_list.md`.
+- Follow the target interface model (`Orchestrator`/`Repository`) and keep adapters replaceable for future `docker-compose` and `gitlab` backends.
 
 ## Coding and documentation guidelines
 

@@ -55,6 +55,7 @@ Related repositories:
 - `docs/design-guidelines/AGENTS.md` — entrypoint for engineering standards.
 - `docs/design-guidelines/common/check_list.md` — mandatory checklist before PR.
 - `docs/design-guidelines/go/check_list.md` — mandatory checklist for Go changes.
+- target architecture is interface-first: `Orchestrator`/`Repository`, default adapters on `client-go` and `go-github`.
 
 ---
 

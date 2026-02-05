@@ -50,6 +50,7 @@ CodeXCTL — это CLI‑инструмент для декларативног
 - `docs/design-guidelines/AGENTS.md` — точка входа в инженерные стандарты.
 - `docs/design-guidelines/common/check_list.md` — обязательный чек‑лист перед PR.
 - `docs/design-guidelines/go/check_list.md` — обязательный чек‑лист для Go‑изменений.
+- целевая архитектура интерфейсная: `Orchestrator`/`Repository`, базовые адаптеры на `client-go` и `go-github`.
 
 ---
 
