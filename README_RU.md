@@ -200,7 +200,7 @@ https://github.com/codex-k8s/project-example/blob/main/README.md
 
 3) **Лейблы конфигурации модели/рассуждений** — позволяют выбрать модель и степень рассуждений для агента
    (поддерживаются как на Issue, так и на PR; приоритет: флаги запуска → Issue → PR → переменные окружения → services.yaml → дефолты config.toml):
-- модель: `[ai-model-gpt-5.2-codex]`, `[ai-model-gpt-5.2]`, `[ai-model-gpt-5.1-codex-max]`, `[ai-model-gpt-5.1-codex-mini]`;
+- модель: `[ai-model-gpt-5.3-codex]`, `[ai-model-gpt-5.2]`, `[ai-model-gpt-5.1-codex-max]`, `[ai-model-gpt-5.1-codex-mini]`;
 - рассуждения: `[ai-reasoning-low]`, `[ai-reasoning-medium]`, `[ai-reasoning-high]`, `[ai-reasoning-extra-high]`.
 
 Как это работает в инструкциях агенту:
@@ -821,7 +821,7 @@ codexctl render \
 - `CODEXCTL_LANG` задаёт язык промптов и сообщений инструментов.
 - Дополнительно можно задать модель и степень рассуждений: `--model` и `--reasoning-effort`.
 - Переменные окружения: `CODEXCTL_MODEL`, `CODEXCTL_MODEL_REASONING_EFFORT` (ниже по приоритету, чем флаги и лейблы).
-- Допустимые значения модели: `gpt-5.2-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`.
+- Допустимые значения модели: `gpt-5.3-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`.
 - Допустимые значения степени рассуждений: `low`, `medium`, `high`, `extra-high`.
 - `--template` переопределяет `--kind`; если `--kind` не задан, по умолчанию используется `dev_issue`.
 

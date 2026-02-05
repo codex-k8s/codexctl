@@ -203,7 +203,7 @@ These labels can be applied together (multiple at once):
 
 3) **Model/reasoning configuration labels** — allow selecting the agent model and reasoning effort
    (supported on both Issues and PRs; priority: CLI flags → Issue → PR → environment variables → services.yaml → config.toml defaults):
-- model: `[ai-model-gpt-5.2-codex]`, `[ai-model-gpt-5.2]`, `[ai-model-gpt-5.1-codex-max]`, `[ai-model-gpt-5.1-codex-mini]`;
+- model: `[ai-model-gpt-5.3-codex]`, `[ai-model-gpt-5.2]`, `[ai-model-gpt-5.1-codex-max]`, `[ai-model-gpt-5.1-codex-mini]`;
 - reasoning: `[ai-reasoning-low]`, `[ai-reasoning-medium]`, `[ai-reasoning-high]`, `[ai-reasoning-extra-high]`.
 
 How this is used in agent instructions:
@@ -829,7 +829,7 @@ Notes:
 - `CODEXCTL_LANG` sets the language for prompts and tool messages.
 - You can also set model and reasoning effort via `--model` and `--reasoning-effort`.
 - Environment variables: `CODEXCTL_MODEL`, `CODEXCTL_MODEL_REASONING_EFFORT` (lower priority than flags and labels).
-- Allowed models: `gpt-5.2-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`.
+- Allowed models: `gpt-5.3-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`.
 - Allowed reasoning effort values: `low`, `medium`, `high`, `extra-high`.
 - `--template` overrides `--kind`; if `--kind` is not set, `dev_issue` is used by default.
 

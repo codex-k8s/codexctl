@@ -410,7 +410,7 @@ func newPromptRunCommand(opts *Options) *cobra.Command {
 	cmd.Flags().String("template", "", "Path to prompt template file (overrides --kind when set)")
 	cmd.Flags().String("lang", "", "Prompt language (e.g. en, ru); overrides CODEXCTL_LANG and defaults to en")
 	cmd.Flags().BoolVar(&infraUnhealthy, "infra-unhealthy", false, "Mark infrastructure as unhealthy in prompt context")
-	cmd.Flags().StringVar(&modelOverride, "model", "", "Override Codex model (gpt-5.2-codex|gpt-5.2|gpt-5.1-codex-max|gpt-5.1-codex-mini)")
+	cmd.Flags().StringVar(&modelOverride, "model", "", "Override Codex model (gpt-5.3-codex|gpt-5.2|gpt-5.1-codex-max|gpt-5.1-codex-mini)")
 	cmd.Flags().StringVar(&reasoningOverride, "reasoning-effort", "", "Override model reasoning effort (low|medium|high|extra-high)")
 	cmd.Flags().String("vars", "", "Additional variables in k=v,k2=v2 format")
 	cmd.Flags().String("var-file", "", "Path to YAML/ENV file with additional variables")

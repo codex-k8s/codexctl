@@ -11,7 +11,7 @@ import (
 )
 
 var allowedCodexModels = map[string]string{
-	"gpt-5.2-codex":      "Latest frontier agentic coding model.",
+	"gpt-5.3-codex":      "Latest frontier agentic coding model.",
 	"gpt-5.2":            "Latest frontier model with improvements across knowledge, reasoning and coding.",
 	"gpt-5.1-codex-max":  "Codex-optimized flagship for deep and fast reasoning.",
 	"gpt-5.1-codex-mini": "Optimized for codex. Cheaper, faster, but less capable.",
@@ -129,7 +129,7 @@ func resolveModelOverride(labels []ghIssueLabel) (string, bool) {
 	}
 
 	priority := []string{
-		"ai-model-gpt-5.2-codex",
+		"ai-model-gpt-5.3-codex",
 		"ai-model-gpt-5.2",
 		"ai-model-gpt-5.1-codex-max",
 		"ai-model-gpt-5.1-codex-mini",
