@@ -1,0 +1,110 @@
+name: "AI Cleanup 🧹"
+on:
+  workflow_call:
+    secrets:
+      CODEXCTL_GH_PAT:
+        required: true
+
+env:
+  CODEXCTL_PR_NUMBER:     ${{ github.event.pull_request.number || '' }}
+  CODEXCTL_BRANCH:        ${{ github.event.pull_request.head.ref || '' }}
+  CODEXCTL_REPO:          ${{ github.repository }}
+
+concurrency:
+  group: ai-cleanup-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup-ai:
+    name: "Cleanup AI slots 🧼"
+    runs-on: [self-hosted, ai]
+    environment: ai-staging
+    env:
+      CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Cleanup AI slot for PR closed 🧹"
+        if: github.event_name == 'pull_request'
+        env:
+          CODEXCTL_ENV: ai
+          CODEXCTL_PR_NUMBER: ${{ github.event.pull_request.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup
+
+      - name: "Cleanup AI slot for Issue closed 🧹"
+        if: github.event_name == 'issues'
+        env:
+          CODEXCTL_ENV: ai
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup
+
+      - name: "Delete PR branch 🧹"
+        if: github.event_name == 'pull_request'
+        env:
+          CODEXCTL_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          codexctl manage-env delete-branch
+
+      - name: "Close linked Issue after merge ✅"
+        if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+        env:
+          CODEXCTL_CLOSE_ISSUE: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env close-linked-issue
+
+      - name: "Delete Issue branches 🧹"
+        if: github.event_name == 'issues'
+        env:
+          CODEXCTL_BRANCH: codex/issue-${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          codexctl manage-env delete-branch
+
+      - name: "Delete AI-repair branch for Issue 🧹"
+        if: github.event_name == 'issues'
+        env:
+          CODEXCTL_BRANCH: codex/ai-repair-${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          codexctl manage-env delete-branch
+
+  cleanup-ai-staging:
+    name: "Cleanup ai-staging repair envs 🧼"
+    runs-on: [self-hosted, ai-staging]
+    environment: ai-staging
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Cleanup ai-staging repair env for PR closed 🧹"
+        if: github.event_name == 'pull_request'
+        env:
+          CODEXCTL_ENV: ai-repair
+          CODEXCTL_PR_NUMBER: ${{ github.event.pull_request.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup
+
+      - name: "Cleanup ai-staging repair env for Issue closed 🧹"
+        if: github.event_name == 'issues'
+        env:
+          CODEXCTL_ENV: ai-repair
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup

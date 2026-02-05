@@ -1,0 +1,214 @@
+name: "AI Staging Repair 🧯"
+on:
+  workflow_call:
+    secrets:
+      CODEXCTL_GH_PAT:
+        required: true
+      OPENAI_API_KEY:
+        required: true
+      CONTEXT7_API_KEY:
+        required: false
+
+env:
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai-repair
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
+concurrency:
+  group: ai-repair-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  create-ai-repair:
+    name: "Allocate slot 🧩"
+    if: >-
+      github.event.label.name == '[ai-repair]' &&
+      contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
+    runs-on: [self-hosted, ai-staging]
+    timeout-minutes: 360
+    environment: ai-staging
+    outputs:
+      slot: ${{ steps.alloc.outputs.slot }}
+      namespace: ${{ steps.alloc.outputs.namespace }}
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Allocate slot via codexctl 🧩"
+        id: alloc
+        env:
+          GITHUB_RUN_ID:           ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          codexctl ci ensure-slot
+
+  deploy-ai-repair:
+    needs: [create-ai-repair]
+    name: "Deploy ai-staging repair env 🚀"
+    runs-on: [self-hosted, ai-staging]
+    environment: ai-staging
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Sync ai-staging sources 📂"
+        run: |
+          set -euo pipefail
+          codexctl ci sync-sources
+
+      - name: "Ensure ai-staging repair env via codexctl 🚀"
+        env:
+          GITHUB_RUN_ID:           ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_SLOT:           ${{ needs.create-ai-repair.outputs.slot }}
+          CODEXCTL_PREFLIGHT:      true
+          CODEXCTL_WAIT:           true
+          CODEXCTL_ONLY_INFRA:     codex-ai-repair-rbac
+          CODEXCTL_ONLY_SERVICES:  codex
+          OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          codexctl ci apply
+
+      - name: "Cleanup ai-staging repair env on failure 🧹"
+        if: failure() || cancelled()
+        env:
+          CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup || true
+
+  run-codex:
+    needs: [create-ai-repair, deploy-ai-repair]
+    name: "Run ai-staging repair agent 🤖"
+    runs-on: [self-hosted, ai-staging]
+    environment: ai-staging
+    env:
+      CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
+    steps:
+      - name: "Checkout default branch 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Sync ai-staging sources 📂"
+        run: |
+          set -euo pipefail
+          codexctl ci sync-sources
+
+      - name: "Ensure working branch 🌿"
+        env:
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          WORKDIR="${CODEXCTL_CODE_ROOT_BASE}/ai-staging/src"
+          cd "${WORKDIR}"
+          git config user.name "${CODEXCTL_GH_USERNAME}"
+          git config user.email "${CODEXCTL_GH_EMAIL}"
+          git checkout -b "codex/ai-repair-${CODEXCTL_ISSUE_NUMBER}" || git checkout "codex/ai-repair-${CODEXCTL_ISSUE_NUMBER}"
+        shell: bash
+
+      - name: "Run Codex ai-staging repair agent 🤖"
+        env:
+          GITHUB_RUN_ID:           ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_SLOT:           ${{ needs.create-ai-repair.outputs.slot }}
+          CODEXCTL_NAMESPACE:      ${{ needs.create-ai-repair.outputs.namespace }}
+          CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
+          OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          codexctl prompt run --kind ai-repair_issue
+
+      - name: "Cleanup ai-staging repair env on failure 🧹"
+        if: failure() || cancelled()
+        env:
+          CODEXCTL_SLOT: ${{ needs.create-ai-repair.outputs.slot }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEXCTL_SLOT}" ]; then
+            exit 0
+          fi
+          codexctl manage-env cleanup || true
+
+      - name: "Auto-commit and push changes 📤"
+        env:
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          WORKDIR="${CODEXCTL_CODE_ROOT_BASE}/ai-staging/src"
+          cd "${WORKDIR}"
+
+          BRANCH="codex/ai-repair-${CODEXCTL_ISSUE_NUMBER}"
+          if git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+            git checkout "$BRANCH"
+          fi
+
+          rm -rf .bin || true
+
+          git add -u
+          git add docs proto services libs || true
+
+          if git diff --cached --quiet; then
+            echo "no changes to commit"
+            exit 0
+          fi
+
+          MSG="fix: ai-staging repair for issue #${CODEXCTL_ISSUE_NUMBER}"
+          git commit -m "$MSG"
+          git push origin "$BRANCH"
+
+      - name: "Detect PR for issue branch 🔎"
+        id: detect_pr
+        env:
+          CODEXCTL_BRANCH: codex/ai-repair-${{ github.event.issue.number }}
+          CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
+        run: |
+          set -euo pipefail
+          codexctl pr detect
+
+      - name: "Attach PR number to slot 🏷️"
+        if: steps.detect_pr.outputs.codexctl_pr_number != ''
+        env:
+          CODEXCTL_SLOT:     ${{ needs.create-ai-repair.outputs.slot }}
+          CODEXCTL_PR_NUMBER: ${{ steps.detect_pr.outputs.codexctl_pr_number }}
+        run: |
+          set -euo pipefail
+          codexctl manage-env set
+
+      - name: "Comment to PR with env links 🔗"
+        if: steps.detect_pr.outputs.codexctl_pr_number != ''
+        env:
+          CODEXCTL_SLOT:      ${{ needs.create-ai-repair.outputs.slot }}
+          CODEXCTL_PR_NUMBER: ${{ steps.detect_pr.outputs.codexctl_pr_number }}
+          CODEXCTL_GH_PAT:    ${{ secrets.CODEXCTL_GH_PAT }}
+        run: |
+          set -euo pipefail
+          codexctl manage-env comment-pr || true

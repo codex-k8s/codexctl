@@ -1,0 +1,104 @@
+name: "AI Plan Review 👁"
+on:
+  workflow_call:
+    secrets:
+      CODEXCTL_GH_PAT:
+        required: true
+      OPENAI_API_KEY:
+        required: true
+      CONTEXT7_API_KEY:
+        required: false
+
+env:
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
+concurrency:
+  group: ai-plan-review-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: "Planning review agent run 🤖"
+    if: >
+      github.event.issue.pull_request == null &&
+      contains(github.event.comment.body, '[ai-plan]') &&
+      contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
+    runs-on: [self-hosted, ai]
+    environment: ai-staging
+    env:
+      CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+      GITHUB_RUN_ID:        ${{ github.run_id }}
+      OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+      CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+          persist-credentials: true
+          fetch-depth: 1
+
+      - name: "Resolve root planning issue 🔗"
+        id: root_issue
+        env:
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CODEXCTL_GH_PAT:       ${{ secrets.CODEXCTL_GH_PAT }}
+        run: |
+          set -euo pipefail
+          codexctl plan resolve-root
+
+      - name: "Validate root issue 🧪"
+        env:
+          CODEXCTL_ROOT_ISSUE_NUMBER:  ${{ steps.root_issue.outputs.root }}
+          CODEXCTL_FOCUS_ISSUE_NUMBER: ${{ steps.root_issue.outputs.focus }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEXCTL_ROOT_ISSUE_NUMBER}" ] || [ "${CODEXCTL_ROOT_ISSUE_NUMBER}" = "0" ]; then
+            echo "error: unable to determine root planning issue for focus issue ${CODEXCTL_FOCUS_ISSUE_NUMBER}" >&2
+            exit 1
+          fi
+
+      - name: "Resolve slot and namespace for root issue 📇"
+        id: card
+        env:
+          CODEXCTL_ISSUE_NUMBER:   ${{ steps.root_issue.outputs.root }}
+          CODEXCTL_SOURCE:         .
+          CODEXCTL_PREPARE_IMAGES: true
+          CODEXCTL_APPLY:          true
+        run: |
+          set -euo pipefail
+          codexctl ci ensure-ready
+
+      - name: "Run planning review agent via codexctl 🤖"
+        env:
+          GITHUB_RUN_ID:           ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_SLOT:           ${{ steps.card.outputs.slot }}
+          CODEXCTL_NAMESPACE:      ${{ steps.card.outputs.namespace }}
+          CODEXCTL_ISSUE_NUMBER:   ${{ steps.root_issue.outputs.root }}
+          CODEXCTL_FOCUS_ISSUE_NUMBER: ${{ steps.root_issue.outputs.focus }}
+          CODEXCTL_PROMPT_CONTINUATION: ${{ steps.card.outputs.codexctl_new_env == 'true' && 'true' || 'false' }}
+          CODEXCTL_RESUME:         ${{ steps.card.outputs.codexctl_new_env == 'true' && 'false' || 'true' }}
+          OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          codexctl prompt run --kind plan_review

@@ -1,0 +1,78 @@
+name: "AI Staging deploy 🚀"
+on:
+  workflow_call:
+    secrets:
+      CODEXCTL_GH_PAT:
+        required: true
+      OPENAI_API_KEY:
+        required: false
+      CONTEXT7_API_KEY:
+        required: false
+
+env:
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
+  CODEXCTL_ENV:            ai-staging
+  CODEXCTL_REPO:           ${{ github.repository }}
+
+concurrency:
+  group: ai-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: "Deploy ai-staging via codexctl 🚀"
+    if: >
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !contains(github.event.head_commit.message, '[skip-ci]') &&
+      !contains(github.event.head_commit.message, '[no ci]') &&
+      !contains(github.event.head_commit.message, '[no-ci]')
+    runs-on: [self-hosted, ai-staging]
+    environment: ai-staging
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Sync ai-staging sources 📂"
+        run: |
+          set -euo pipefail
+          codexctl ci sync-sources
+
+      - name: "Prepare images via codexctl 🪞🏗️"
+        env:
+          CODEXCTL_MIRROR_IMAGES: true
+          CODEXCTL_BUILD_IMAGES:  true
+          CODEXCTL_KANIKO_INSECURE:        true
+          CODEXCTL_KANIKO_SKIP_TLS_VERIFY: true
+          CODEXCTL_KANIKO_SKIP_TLS_VERIFY_PULL: true
+        run: |
+          set -euo pipefail
+          codexctl ci images
+
+      - name: "Apply ai-staging via codexctl 🚀"
+        env:
+          NO_PROXY:             127.0.0.1,localhost,::1
+          GITHUB_RUN_ID:        ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_PREFLIGHT:      true
+          CODEXCTL_WAIT:           true
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          codexctl ci apply

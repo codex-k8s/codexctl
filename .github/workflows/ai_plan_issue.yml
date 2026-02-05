@@ -1,0 +1,148 @@
+name: "AI Plan 🧭"
+on:
+  workflow_call:
+    secrets:
+      CODEXCTL_GH_PAT:
+        required: true
+      OPENAI_API_KEY:
+        required: true
+      CONTEXT7_API_KEY:
+        required: false
+
+env:
+  CODEXCTL_ALLOWED_USERS:  ${{ vars.CODEXCTL_ALLOWED_USERS }}
+  CODEXCTL_GH_USERNAME:    ${{ vars.CODEXCTL_GH_USERNAME }}
+  CODEXCTL_GH_EMAIL:       ${{ vars.CODEXCTL_GH_EMAIL }}
+  CODEXCTL_ENV:            ai
+  CODEXCTL_LANG:           ${{ vars.CODEXCTL_LANG }}
+  CODEXCTL_DEV_SLOTS_MAX:  ${{ vars.CODEXCTL_DEV_SLOTS_MAX }}
+  CODEXCTL_CODE_ROOT_BASE: ${{ vars.CODEXCTL_CODE_ROOT_BASE }}
+  CODEXCTL_BASE_DOMAIN_DEV:        ${{ vars.CODEXCTL_BASE_DOMAIN_DEV }}
+  CODEXCTL_BASE_DOMAIN_AI_STAGING: ${{ vars.CODEXCTL_BASE_DOMAIN_AI_STAGING }}
+  CODEXCTL_BASE_DOMAIN_AI:         ${{ vars.CODEXCTL_BASE_DOMAIN_AI }}
+  CODEXCTL_STORAGE_CLASS_WORKSPACE: ${{ vars.CODEXCTL_STORAGE_CLASS_WORKSPACE }}
+  CODEXCTL_STORAGE_CLASS_DATA:      ${{ vars.CODEXCTL_STORAGE_CLASS_DATA }}
+  CODEXCTL_STORAGE_CLASS_REGISTRY:  ${{ vars.CODEXCTL_STORAGE_CLASS_REGISTRY }}
+  CODEXCTL_WORKSPACE_MOUNT: /workspace
+  CODEXCTL_WORKSPACE_PVC:   ${{ vars.CODEXCTL_WORKSPACE_PVC }}
+  CODEXCTL_DATA_PVC:        ${{ vars.CODEXCTL_DATA_PVC }}
+  CODEXCTL_REGISTRY_PVC:    ${{ vars.CODEXCTL_REGISTRY_PVC }}
+  CODEXCTL_SYNC_IMAGE:      ${{ vars.CODEXCTL_SYNC_IMAGE }}
+  CODEXCTL_REPO:           ${{ github.repository }}
+
+concurrency:
+  group: ai-plan-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  create-ai-plan:
+    if: >-
+      github.event.label.name == '[ai-plan]' &&
+      contains(format(',{0},', vars.CODEXCTL_ALLOWED_USERS), format(',{0},', github.actor))
+    name: "Allocate plan slot 🧩"
+    runs-on: [self-hosted, ai]
+    timeout-minutes: 360
+    environment: ai-staging
+    outputs:
+      slot: ${{ steps.alloc.outputs.slot }}
+      namespace: ${{ steps.alloc.outputs.namespace }}
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Allocate slot via codexctl 🧩"
+        id: alloc
+        env:
+          GITHUB_RUN_ID:           ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          codexctl ci ensure-slot
+
+  deploy-ai-plan:
+    needs: [create-ai-plan]
+    name: "Deploy AI plan env 🚀"
+    runs-on: [self-hosted, ai]
+    environment: ai-staging
+    outputs:
+      infra_ready: ${{ steps.ensure.outputs.infra_ready }}
+      infra_unhealthy: ${{ steps.ensure.outputs.infra_unhealthy }}
+      codexctl_run_args: ${{ steps.ensure.outputs.codexctl_run_args }}
+    steps:
+      - name: "Checkout repository 📥"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Apply AI plan env via codexctl 🚀"
+        id: ensure
+        env:
+          GITHUB_RUN_ID:           ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_SLOT:           ${{ needs.create-ai-plan.outputs.slot }}
+          CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
+          CODEXCTL_SOURCE:         .
+          CODEXCTL_PREPARE_IMAGES: true
+          CODEXCTL_APPLY:          true
+          CODEXCTL_FORCE_APPLY:    true
+          CODEXCTL_WAIT_SOFT_FAIL: true
+          OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          codexctl ci ensure-ready
+
+  run-codex-plan:
+    needs: [create-ai-plan, deploy-ai-plan]
+    name: "Run planning agent 🤖"
+    runs-on: [self-hosted, ai]
+    environment: ai-staging
+    env:
+      CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+      CODEXCTL_INFRA_UNHEALTHY: ${{ needs.deploy-ai-plan.outputs.infra_unhealthy }}
+    steps:
+      - name: "Checkout default branch 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Run planning agent inline 🤖"
+        env:
+          GITHUB_RUN_ID:           ${{ github.run_id }}
+          CODEXCTL_GH_PAT:         ${{ secrets.CODEXCTL_GH_PAT }}
+          CODEXCTL_SLOT:           ${{ needs.create-ai-plan.outputs.slot }}
+          CODEXCTL_ISSUE_NUMBER:   ${{ github.event.issue.number }}
+          CODEXCTL_NAMESPACE:      ${{ needs.create-ai-plan.outputs.namespace }}
+          OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
+          CONTEXT7_API_KEY:        ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          codexctl prompt run --kind plan_issue
+
+  cleanup-ai-plan:
+    needs: [create-ai-plan, deploy-ai-plan, run-codex-plan]
+    if: >
+      always() &&
+      (needs.create-ai-plan.result != 'success' || needs.deploy-ai-plan.result != 'success' || needs.run-codex-plan.result != 'success')
+    name: "Cleanup plan env on failure 🧹"
+    runs-on: [self-hosted, ai]
+    environment: ai-staging
+    env:
+      CODEXCTL_GH_PAT:   ${{ secrets.CODEXCTL_GH_PAT }}
+    steps:
+      - name: "Checkout minimal 📥"
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CODEXCTL_GH_PAT }}
+
+      - name: "Cleanup AI plan slot on failure (global) 🧹"
+        env:
+          CODEXCTL_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CODEXCTL_WITH_CONFIGMAP: true
+        run: |
+          set -euo pipefail
+          codexctl manage-env cleanup || true

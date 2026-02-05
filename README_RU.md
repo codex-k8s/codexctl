@@ -37,12 +37,12 @@
 - подключается к PostgreSQL/Redis/очередям, проверяет миграции и данные;
 - применяет инфраструктуру/сервисы декларативно через `services.yaml` и `codexctl apply/ci apply`.
 
-Рабочий пример (готовые `services.yaml` и GitHub Actions workflow’ы): https://github.com/codex-k8s/project-example
+Рабочий пример (готовые `services.yaml` и wrapper‑workflow’ы, которые вызывают reusable‑workflow’ы из `codexctl`): https://github.com/codex-k8s/project-example
 
 Связанные репозитории:
 - `yaml-mcp-server` — MCP‑gateway для безопасных операций модели: https://github.com/codex-k8s/yaml-mcp-server
 - `telegram-approver` — Telegram‑аппрувер для approval‑флоу: https://github.com/codex-k8s/telegram-approver
-- `project-example` — пример проекта с манифестами и GitHub Actions: https://github.com/codex-k8s/project-example
+- `project-example` — пример проекта с манифестами и wrapper‑workflow’ами GitHub Actions: https://github.com/codex-k8s/project-example
 
 ---
 
@@ -905,8 +905,12 @@ registry: '{{ envOr "CODEXCTL_REGISTRY_HOST" (printf "registry.%s.svc.cluster.lo
 
 ## 🔐 7. Интеграция с GitHub Actions и секреты
 
-Ниже — примеры workflow’ов, которые используются в проекте‑примере (смотри также
-в репозитории project-example: `.github/workflows/*.yml`). Предполагается только in‑cluster запуск
+Ниже — расширенные примеры workflow’ов, как они выглядели бы в проектном репозитории.
+Reusable‑workflow’ы, которые поставляются с `codexctl`, лежат в `.github/workflows/*.yml` и используют `workflow_call`.
+В проектном репозитории обычно оставляют тонкие wrapper‑workflow’ы с триггерами,
+которые вызывают их через
+`uses: codex-k8s/codexctl/.github/workflows/<name>@<ref>` (лучше фиксировать тегом или SHA) и `secrets: inherit`.
+Пример wiring — в репозитории `project-example`. Предполагается только in‑cluster запуск
 self‑hosted runner’ов в Kubernetes (ARC), а label’ы runner’ов соответствуют окружениям:
 
 - `ai-staging` — деплой/repair в ai‑staging;
@@ -957,7 +961,7 @@ jobs:
     runs-on: [self-hosted, ai-staging]
     environment: ai-staging
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -1047,7 +1051,7 @@ jobs:
       slot: ${{ steps.alloc.outputs.slot }}
       namespace: ${{ steps.alloc.outputs.namespace }}
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1072,7 +1076,7 @@ jobs:
       infra_unhealthy: ${{ steps.ensure.outputs.infra_unhealthy }}
       codexctl_run_args: ${{ steps.ensure.outputs.codexctl_run_args }}
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -1203,7 +1207,7 @@ jobs:
       OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
       CONTEXT7_API_KEY:     ${{ secrets.CONTEXT7_API_KEY }}
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1316,7 +1320,7 @@ jobs:
       slot: ${{ steps.alloc.outputs.slot }}
       namespace: ${{ steps.alloc.outputs.namespace }}
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1341,7 +1345,7 @@ jobs:
       infra_unhealthy: ${{ steps.ensure.outputs.infra_unhealthy }}
       codexctl_run_args: ${{ steps.ensure.outputs.codexctl_run_args }}
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -1484,7 +1488,7 @@ jobs:
           codexctl manage-env cleanup || true
 ```
 
-Полный пример см. в репозитории project-example: `.github/workflows/ai_dev_issue.yml`.
+Полный пример см. в репозитории codexctl: `.github/workflows/ai_dev_issue.yml` (в project-example — wrapper‑workflow).
 
 ### 👁 7.5. AI PR Review (авто‑исправление по Changes Requested)
 
@@ -1579,7 +1583,7 @@ jobs:
           codexctl pr review-apply
 ```
 
-Полный пример см. в репозитории project-example: `.github/workflows/ai_pr_review.yml`.
+Полный пример см. в репозитории codexctl: `.github/workflows/ai_pr_review.yml` (в project-example — wrapper‑workflow).
 
 ### 🧯 7.6. AI Staging Repair по Issue (лейбл `[ai-repair]`)
 
@@ -1632,7 +1636,7 @@ jobs:
       slot: ${{ steps.alloc.outputs.slot }}
       namespace: ${{ steps.alloc.outputs.namespace }}
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -1653,7 +1657,7 @@ jobs:
     runs-on: [self-hosted, ai-staging]
     environment: ai-staging
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -1799,7 +1803,7 @@ jobs:
           codexctl manage-env comment-pr || true
 ```
 
-Полный пример см. в репозитории project-example: `.github/workflows/ai_repair_issue.yml`.
+Полный пример см. в репозитории codexctl: `.github/workflows/ai_repair_issue.yml` (в project-example — wrapper‑workflow).
 
 ### 👁 7.7. AI Staging Repair PR Review (Changes Requested для `codex/ai-repair-*`)
 
@@ -1920,7 +1924,7 @@ jobs:
           codexctl manage-env cleanup || true
 ```
 
-Полный пример см. в репозитории project-example: `.github/workflows/ai_repair_pr_review.yml`.
+Полный пример см. в репозитории codexctl: `.github/workflows/ai_repair_pr_review.yml` (в project-example — wrapper‑workflow).
 
 ### 🧹 7.8. Cleanup (закрытие Issue/PR)
 
@@ -1964,7 +1968,7 @@ jobs:
     env:
       CODEXCTL_GH_PAT: ${{ secrets.CODEXCTL_GH_PAT }}
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -2026,7 +2030,7 @@ jobs:
     runs-on: [self-hosted, ai-staging]
     environment: ai-staging
     steps:
-      - name: "Checkout project-example 📥"
+      - name: "Checkout repository 📥"
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.CODEXCTL_GH_PAT }}
@@ -2052,7 +2056,7 @@ jobs:
           codexctl manage-env cleanup
 ```
 
-Полный пример см. в репозитории project-example: `.github/workflows/ai_cleanup.yml`.
+Полный пример см. в репозитории codexctl: `.github/workflows/ai_cleanup.yml` (в project-example — wrapper‑workflow).
 
 ### 🔑 7.9. Секреты и PAT для GitHub‑бота
 
